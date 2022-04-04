@@ -364,8 +364,8 @@ class Tracker:
 
     def __init__(self, model, args):
         self.model = model
-        self.hungarian_matcher = HungarianInferenceMatcher(cost_mask_iou=args.cost_mask_iou , cost_class=args.cost_class,
-                                                            t_window=args.overlap_window, score_cost=args.cost_score, cost_center_distance=args.cost_center_distance,
+        self.hungarian_matcher = HungarianInferenceMatcher(cost_mask_iou=args.cost_mask_iou, cost_class=args.cost_class,
+                                                           stride=args.overlap_window, score_cost=args.cost_score, cost_center_distance=args.center_distance_cost,
                                                            use_binary_mask_iou=args.use_binary_mask_iou,
                                                            use_frame_average_iou=args.use_frame_average_iou, use_center_distance=args.use_center_distance)
         self.focal_loss = args.focal_loss
@@ -625,7 +625,7 @@ def main(args):
     if not hasattr(model_args, "mask_aux_loss"):
         model_args.mask_aux_loss = None
     if not hasattr(model_args, "use_trajectory_queries"):
-        model_args.use_trajectory_queries = False
+        model_args.instance_level_queries = False
     if not hasattr(model_args, "use_extra_class"):
         model_args.use_extra_class = False
     if not hasattr(model_args, "use_giou"):

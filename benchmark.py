@@ -67,7 +67,7 @@ def benchmark():
     assert args.batch_size > 0
     assert args.resume is None or os.path.exists(args.resume)
 
-    dataset, num_classes = build_dataset(image_set="val", args=main_args, num_videos_to_eval=main_args.val_videos_eval)
+    dataset, num_classes = build_dataset(image_set="val", config=main_args, num_videos_to_eval=main_args.val_videos_eval)
     sampler_val = torch.utils.data.SequentialSampler(dataset)
 
     data_loader_val = DataLoader(

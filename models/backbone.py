@@ -85,6 +85,7 @@ class BackboneBase(nn.Module):
 
 class Backbone(BackboneBase):
     """ResNet backbone with frozen BatchNorm."""
+
     def __init__(self, name: str,
                  train_backbone: bool,
                  return_interm_layers: bool,
@@ -92,11 +93,10 @@ class Backbone(BackboneBase):
         backbone = getattr(torchvision.models, name)(
             replace_stride_with_dilation=[False, False, dilation],
             pretrained=is_main_process(), norm_layer=FrozenBatchNorm2d)
-        # num_channels = 512 if name in ('resnet18', 'resnet34') else 2048
-        # super().__init__(backbone, train_backbone, num_channels, return_interm_layers)
         super().__init__(backbone, train_backbone, return_interm_layers)
         if dilation:
             self.strides[-1] = self.strides[-1] // 2
+
 
 class Joiner(nn.Sequential):
     def __init__(self, backbone, position_embedding):
@@ -116,11 +116,9 @@ class Joiner(nn.Sequential):
         return out, pos
 
 
-def build_backbone(args):
-    position_embedding = build_position_encoding(args)
-    train_backbone = args.lr_backbone > 0
-    return_interm_layers = True
-    backbone = Backbone(args.backbone, train_backbone, return_interm_layers, args.dilation)
+def build_backbone(cfg):
+    position_embedding = build_position_encoding(cfg)
+    train_backbone = cfg.SOLVER.LR_BACKBONE != 0
+    backbone = Backbone(name=cfg.MODEL.BACKBONE, dilation=cfg.MODEL.BACKBONE_DILATION, train_backbone=train_backbone, return_interm_layers=True)
     model = Joiner(backbone, position_embedding)
-    # model.num_channels = backbone.num_channels
     return model

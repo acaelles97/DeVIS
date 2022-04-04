@@ -6,4 +6,4 @@
 # Modified from https://github.com/chengdazhi/Deformable-Convolution-V2-PyTorch/tree/pytorch_1.0.0
 # ------------------------------------------------------------------------------------------------
 
-from .ms_deform_attn import MSDeformAttn, MSDeformAttnPytorch, TemporalDifferentModuleMSDeformAttn, TemporalDifferentModuleMSDeformAttnUnified, TemporalDifferentModuleMSDeformAttnVIZ
+from .ms_deform_attn import MSDeformAttn, TemporalMSDeformAttnEncoder, TemporalMSDeformAttnDecoder

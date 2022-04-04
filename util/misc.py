@@ -3,7 +3,6 @@ Misc functions, including distributed helpers.
 
 Mostly copy-paste from torchvision references.
 """
-import datetime
 import os
 import subprocess
 import time
@@ -11,21 +10,14 @@ from collections import defaultdict, deque
 import datetime
 import pickle
 from typing import Optional, List
-
+import random
+import numpy as np
 import torch
 import torch.distributed as dist
-from torch import Tensor
 
-# needed due to empty tensor bug in pytorch and torchvision 0.5
 import torchvision
-from torch import Tensor
 from visdom import Visdom
 from argparse import Namespace
-
-
-# if float(torchvision.__version__[:3]) < 0.7:
-#     from torchvision.ops import _new_empty_tensor
-#     from torchvision.ops.misc import _output_size
 
 
 class SmoothedValue(object):
@@ -319,7 +311,7 @@ def _max_by_axis(the_list):
     return maxes
 
 
-def nested_tensor_from_tensor_list(tensor_list: List[Tensor], split=True):
+def nested_tensor_from_tensor_list(tensor_list: List[torch.Tensor], split=True):
     # TODO make this more general
     if split:
         tensor_list = [tensor.split(3,dim=0) for tensor in tensor_list]
@@ -343,7 +335,7 @@ def nested_tensor_from_tensor_list(tensor_list: List[Tensor], split=True):
 
 
 class NestedTensor(object):
-    def __init__(self, tensors, mask: Optional[Tensor]):
+    def __init__(self, tensors, mask: Optional[torch.Tensor]):
         self.tensors = tensors
         self.mask = mask
 
@@ -467,22 +459,12 @@ def accuracy(output, target, topk=(1,)):
 
 
 def interpolate(input, size=None, scale_factor=None, mode="nearest", align_corners=None):
-    # type: (Tensor, Optional[List[int]], Optional[float], str, Optional[bool]) -> Tensor
+    # type: (torch.Tensor, Optional[List[int]], Optional[float], str, Optional[bool]) -> torch.Tensor
     """
     Equivalent to nn.functional.interpolate, but with support for empty batch sizes.
     This will eventually be supported natively by PyTorch, and this
     class can go away.
     """
-    # if float(torchvision.__version__[:3]) < 0.7:
-    #     if input.numel() > 0:
-    #         return torch.nn.functional.interpolate(
-    #             input, size, scale_factor, mode, align_corners
-    #         )
-    #
-    #     output_shape = _output_size(2, input, size, scale_factor)
-    #     output_shape = list(input.shape[:-2]) + list(output_shape)
-    #     return _new_empty_tensor(input, output_shape)
-    # else:
     return torchvision.ops.misc.interpolate(input, size, scale_factor, mode, align_corners)
 
 def nested_dict_to_namespace(dictionary):
@@ -502,81 +484,59 @@ def match_name_keywords(n, name_keywords):
     return out
 
 
-def print_training_params(model_without_ddp, args):
+# def seed_worker(worker_id):
+#     worker_seed = torch.initial_seed() % 2 ** 32
+#     np.random.seed(worker_seed)
+#     random.seed(worker_seed)
 
-    if args.use_specific_lrs:
-        print("TRAINING PARAMETERS")
-        frozen_parameters = []
-        unique_params = []
-        for n, p in model_without_ddp.named_parameters():
-            param_used =  False
-            if not match_name_keywords(n, args.lr_backbone_names + args.lr_linear_curr_proj_names +
-                                          args.lr_linear_temp_proj_names + args.lr_new_modules_names) and p.requires_grad:
-                print(f"{n} lr: {args.lr}")
-                if n in unique_params:
-                    raise Exception(f"PARAM {n} already in params")
-                unique_params.append(n)
-                param_used=True
-            if match_name_keywords(n, args.lr_new_modules_names) and p.requires_grad:
-                print(f"{n} lr: {args.lr * args.lr_new_modules}")
-                if n in unique_params:
-                    raise Exception(f"PARAM {n} already in params")
-                unique_params.append(n)
-                param_used = True
 
-            if match_name_keywords(n, args.lr_linear_curr_proj_names) and p.requires_grad:
-                print(f"{n} lr: {args.lr * args.lr_linear_curr_proj_mult}")
-                if n in unique_params:
-                    raise Exception(f"PARAM {n} already in params")
-                unique_params.append(n)
-                param_used = True
+def print_training_params(model_without_ddp, cfg):
+    print("TRAINING PARAMETERS")
+    frozen_parameters = []
+    unique_params = []
 
-            if match_name_keywords(n, args.lr_linear_temp_proj_names) and p.requires_grad:
-                print(f"{n} lr: {args.lr * args.lr_linear_temp_proj_mult}")
-                if n in unique_params:
-                    raise Exception(f"PARAM {n} already in params")
-                unique_params.append(n)
-                param_used = True
+    for n, p in model_without_ddp.named_parameters():
+        param_used = False
+        if not match_name_keywords(n, cfg.SOLVER.BACKBONE_NAMES + cfg.SOLVER.LR_LINEAR_PROJ_NAMES +
+                                                  cfg.SOLVER.LR_MASK_HEAD_NAMES + cfg.SOLVER.DEVIS.LR_TEMPORAL_LINEAR_PROJ_NAMES) and p.requires_grad:
+            print(f"{n} lr: {cfg.SOLVER.BASE_LR}")
+            if n in unique_params:
+                raise Exception(f"PARAM {n} already in params")
+            unique_params.append(n)
+            param_used = True
 
-            if match_name_keywords(n, args.lr_backbone_names) and p.requires_grad:
-                print(f"{n} lr: {args.lr_backbone}")
-                if n in unique_params:
-                    raise Exception(f"PARAM {n} already in params")
-                unique_params.append(n)
-                param_used = True
+        if match_name_keywords(n, cfg.SOLVER.BACKBONE_NAMES) and p.requires_grad:
+            print(f"{n} lr: {cfg.SOLVER.LR_BACKBONE}")
+            if n in unique_params:
+                raise Exception(f"PARAM {n} already in params")
+            unique_params.append(n)
+            param_used = True
 
-            if not param_used:
-                frozen_parameters.append(n)
+        if match_name_keywords(n, cfg.SOLVER.LR_LINEAR_PROJ_NAMES) and p.requires_grad:
+            print(f"{n} lr: {cfg.SOLVER.BASE_LR * cfg.SOLVER.LR_LINEAR_PROJ_MULT}")
+            if n in unique_params:
+                raise Exception(f"PARAM {n} already in params")
+            unique_params.append(n)
+            param_used = True
 
-        print("FROZEN PARAMETERS")
-        for n in frozen_parameters:
-            print(n)
-        print("\n")
+        if match_name_keywords(n, cfg.SOLVER.LR_MASK_HEAD_NAMES) and p.requires_grad:
+            print(f"{n} lr: {cfg.SOLVER.BASE_LR * cfg.SOLVER.LR_MASK_HEAD_MULT}")
+            if n in unique_params:
+                raise Exception(f"PARAM {n} already in params")
+            unique_params.append(n)
+            param_used = True
 
-    else:
-        print("TRAINING PARAMETERS")
-        frozen_parameters = []
-        unique_params = []
-        for n, p in model_without_ddp.named_parameters():
-            param_used = False
-            if "backbone.0" not in n and p.requires_grad:
-                print(f"{n} lr: {args.lr}")
-                if n in unique_params:
-                    raise Exception(f"PARAM {n} already in params")
-                unique_params.append(n)
-                param_used = True
+        if match_name_keywords(n, cfg.SOLVER.DEVIS.LR_TEMPORAL_LINEAR_PROJ_NAMES) and p.requires_grad:
+            print(f"{n} lr: {cfg.SOLVER.BASE_LR * cfg.SOLVER.DEVIS.LR_TEMPORAL_LINEAR_PROJ_MULT}")
+            if n in unique_params:
+                raise Exception(f"PARAM {n} already in params")
+            unique_params.append(n)
+            param_used = True
 
-            if "backbone.0" in n and p.requires_grad:
-                print(f"{n} lr: {args.lr_backbone}")
-                if n in unique_params:
-                    raise Exception(f"PARAM {n} already in params")
-                unique_params.append(n)
-                param_used = True
+        if not param_used:
+            frozen_parameters.append(n)
 
-            if not param_used:
-                frozen_parameters.append(n)
-
-        print("FROZEN PARAMETERS")
-        for n in frozen_parameters:
-            print(n)
-        print("\n")
+    print("FROZEN PARAMETERS")
+    for n in frozen_parameters:
+        print(n)
+    print("\n")

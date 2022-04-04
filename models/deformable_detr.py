@@ -21,15 +21,16 @@ from util.misc import (NestedTensor, nested_tensor_from_tensor_list,
                        is_dist_avail_and_initialized, inverse_sigmoid)
 import copy
 
+
 def _get_clones(module, N):
-    return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
+    return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
 
 
-class DeformableVisTRNewClass(nn.Module):
+class DeformableDETR(nn.Module):
     """ This is the Deformable DETR module that performs object detection """
 
-    def __init__(self, backbone, transformer, num_classes, num_frames, num_queries, num_feature_levels, class_head_type, aux_loss=True,
-                 with_box_refine=False, two_stage=False, query_init_type="random", use_trajectory_queries=False, with_ref_point_refine=False):
+    def __init__(self, backbone, transformer, num_classes, num_queries, num_feature_levels, aux_loss, with_box_refine,
+                 with_ref_point_refine, with_gradient):
         """ Initializes the model.
         Parameters:
             backbone: torch module of the backbone to be used. See backbone.py
@@ -44,26 +45,20 @@ class DeformableVisTRNewClass(nn.Module):
         super().__init__()
         self.backbone = backbone
         self.num_queries = num_queries
-        self.class_head_type = class_head_type
-        self.use_trajectory_queries = use_trajectory_queries
-        self.with_ref_point_refine = with_ref_point_refine
+        self.with_gradient = with_gradient
         self.transformer = transformer
         hidden_dim = transformer.d_model
 
+        self.class_embed = nn.Linear(hidden_dim, num_classes + 1)
         self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
         self.num_feature_levels = num_feature_levels
-        self.num_frames = num_frames
-
         self.query_embed = nn.Embedding(num_queries, hidden_dim * 2)
-        self.class_queries = None
-
-        if class_head_type == "class_queries":
-            self.class_queries = nn.Embedding(num_queries // self.num_frames, hidden_dim)
-            self.class_embed = ClassHead(self.num_frames, hidden_dim, num_classes + 1)
+        # Allows using /32 resolution when only 1 is used
+        if num_feature_levels == 1:
+            num_channels = [self.backbone.num_channels[3]]
         else:
-            self.class_embed = nn.Linear(hidden_dim, num_classes + 1)
+            num_channels = self.backbone.num_channels[-3:]
 
-        num_channels = self.backbone.num_channels[-3:]
         if num_feature_levels > 1:
             input_proj_list = []
             num_backbone_outs = len(self.backbone.strides) - 1
@@ -90,15 +85,12 @@ class DeformableVisTRNewClass(nn.Module):
                 )])
         self.aux_loss = aux_loss
         self.with_box_refine = with_box_refine
-        self.two_stage = two_stage
+        self.with_ref_point_refine = with_ref_point_refine
 
         prior_prob = 0.01
         bias_value = -math.log((1 - prior_prob) / prior_prob)
-        if class_head_type == "class_queries":
-            self.class_embed.class_embd.bias.data = torch.ones(num_classes + 1) * bias_value
-        else:
-            self.class_embed.bias.data = torch.ones(num_classes + 1) * bias_value
-
+        self.class_embed.bias.data = torch.ones(num_classes + 1) * bias_value
+        # print(self.class_embed.weight)
         nn.init.constant_(self.bbox_embed.layers[-1].weight.data, 0)
         nn.init.constant_(self.bbox_embed.layers[-1].bias.data, 0)
         for proj in self.input_proj:
@@ -106,9 +98,8 @@ class DeformableVisTRNewClass(nn.Module):
             nn.init.constant_(proj[0].bias, 0)
 
         # if two-stage, the last class_embed and bbox_embed is for region proposal generation
-        num_pred = (transformer.decoder.num_layers + 1) if two_stage else transformer.decoder.num_layers
+        num_pred = transformer.decoder.num_layers
         if with_box_refine:
-            assert not with_ref_point_refine
             self.class_embed = _get_clones(self.class_embed, num_pred)
             self.bbox_embed = _get_clones(self.bbox_embed, num_pred)
             nn.init.constant_(self.bbox_embed[0].layers[-1].bias.data[2:], -2.0)
@@ -119,17 +110,21 @@ class DeformableVisTRNewClass(nn.Module):
             self.class_embed = nn.ModuleList([self.class_embed for _ in range(num_pred)])
             self.bbox_embed = nn.ModuleList([self.bbox_embed for _ in range(num_pred)])
             self.transformer.decoder.bbox_embed = None
+
             if with_ref_point_refine:
                 ref_point_embed = MLP(hidden_dim, hidden_dim, 2, 3)
                 nn.init.constant_(ref_point_embed.layers[-1].weight.data, 0)
                 nn.init.constant_(ref_point_embed.layers[-1].bias.data, 0)
                 self.transformer.decoder.ref_point_embed = _get_clones(ref_point_embed, num_pred)
 
-        if query_init_type == "random_with_frame_repetition" and not use_trajectory_queries:
-            num_trajectories = num_queries // num_frames
-            new_weights = nn.init.normal(torch.empty((num_trajectories, 512))).repeat(num_frames, 1, 1)
+    def init_queries_for_devis(self, num_frames, use_instance_level_queries):
+        if not use_instance_level_queries:
+            num_trajectories = self.query_embed.shape[0] // num_frames
+            new_weights = torch.empty((num_trajectories, self.transformer.d_model * 2))
+            nn.init.normal_(new_weights)
+            new_weights = new_weights.repeat(num_frames, 1, 1)
             with torch.no_grad():
-                self.query_embed.weight =  nn.Parameter(new_weights.flatten(0, 1))
+                self.query_embed.weight = nn.Parameter(new_weights.flatten(0, 1))
 
     def forward(self, samples: NestedTensor, targets: dict = None):
         """ The forward expects a NestedTensor, which consists of:
@@ -150,8 +145,12 @@ class DeformableVisTRNewClass(nn.Module):
             samples = nested_tensor_from_tensor_list(samples)
         features, pos = self.backbone(samples)
         features_all = features
+        if self.num_feature_levels == 1:
+            features, pos = [features[-1]], [pos[-1]]
 
-        features, pos = features[1:], pos[1:]
+        else:
+            features, pos = features[1:], pos[1:]
+
         srcs, masks = [], []
         for l, feat in enumerate(features):
             src, mask = feat.decompose()
@@ -173,34 +172,36 @@ class DeformableVisTRNewClass(nn.Module):
                 masks.append(mask)
                 pos.append(pos_l)
 
-        query_embeds = None
-        if not self.two_stage:
-            query_embeds = self.query_embed.weight
+        query_embeds = self.query_embed.weight
+        # torch.save(srcs, "/usr/stud/cad/results/trainings/debug/out_to_check/srcs_new.pth")
+        # torch.save(pos, "/usr/stud/cad/results/trainings/debug/out_to_check/pos_new.pth")
+        # torch.save(query_embeds, "/usr/stud/cad/results/trainings/debug/out_to_check/query_embeds_new.pth")
 
-        hs, hs_class, query_pos, memory, init_reference, inter_references, level_start_index, valid_ratios, spatial_shapes  = self.transformer(srcs, masks, pos, query_embeds)
-
+        hs, query_pos, memory, init_reference, inter_references, level_start_index, valid_ratios, spatial_shapes = self.transformer(srcs, masks, pos, query_embeds)
         outputs_classes = []
         outputs_coords = []
         for lvl in range(hs.shape[0]):
-            if lvl == 0:
-                reference = init_reference
-            else:
-                reference = inter_references[lvl - 1]
-            reference = inverse_sigmoid(reference)
-            if self.class_head_type == "class_weight":
-                outputs_class = self.class_embed[lvl](hs_class[lvl])
-            else:
-                outputs_class = self.class_embed[lvl](self.class_queries.weight, hs[lvl], query_pos)
-
-            tmp = self.bbox_embed[lvl](hs[lvl])
-            if reference.shape[-1] == 4:
-                tmp += reference
-            else:
-                assert reference.shape[-1] == 2
-                tmp[..., :2] += reference
-            outputs_coord = tmp.sigmoid()
+            outputs_class = self.class_embed[lvl](hs[lvl])
             outputs_classes.append(outputs_class)
+
+            if self.with_gradient:
+                outputs_coord = inter_references[lvl]
+            else:
+                if lvl == 0:
+                    reference = init_reference
+                else:
+                    reference = inter_references[lvl - 1]
+                reference = inverse_sigmoid(reference)
+                tmp = self.bbox_embed[lvl](hs[lvl])
+                if reference.shape[-1] == 4:
+                    tmp += reference
+                else:
+                    assert reference.shape[-1] == 2
+                    tmp[..., :2] += reference
+                outputs_coord = tmp.sigmoid()
+
             outputs_coords.append(outputs_coord)
+
         outputs_class = torch.stack(outputs_classes)
         outputs_coord = torch.stack(outputs_coords)
 
@@ -208,16 +209,7 @@ class DeformableVisTRNewClass(nn.Module):
         if self.aux_loss:
             out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
 
-
-        offset = 0
-        memory_slices = []
-        for src in srcs:
-            n, c, h, w = src.shape
-            memory_slice = memory[:, offset:offset + h * w * self.num_frames].permute(0, 2, 1).reshape(n // self.num_frames, c, self.num_frames, h, w)
-            memory_slices.append(memory_slice)
-            offset += h * w * self.num_frames
-
-        return out, features_all, memory, memory_slices, hs, query_pos, srcs, masks, init_reference, inter_references, level_start_index, valid_ratios, spatial_shapes
+        return out, features_all, memory, hs, query_pos, srcs, masks, init_reference, inter_references, level_start_index, valid_ratios, spatial_shapes
 
     @torch.jit.unused
     def _set_aux_loss(self, outputs_class, outputs_coord):
@@ -227,19 +219,79 @@ class DeformableVisTRNewClass(nn.Module):
         return [{'pred_logits': a, 'pred_boxes': b}
                 for a, b in zip(outputs_class[:-1], outputs_coord[:-1])]
 
-class ClassHead(nn.Module):
-    def __init__(self, num_frames, input_dim, num_classes):
+
+def process_boxes(boxes, target_sizes):
+    # convert to [x0, y0, x1, y1] format
+    boxes = box_ops.box_cxcywh_to_xyxy(boxes)
+    # and from relative [0, 1] to absolute [0, height] coordinates
+    img_h, img_w = target_sizes.unbind(1)
+    scale_fct = torch.stack([img_w, img_h, img_w, img_h], dim=1)
+    boxes = boxes * scale_fct[:, None, :]
+
+    return boxes
+
+
+class DefDETRPostProcessor(nn.Module):
+    def __init__(self, focal_loss, num_out, use_top_k):
         super().__init__()
-        self.num_frames = num_frames
-        self.cross_attn = nn.MultiheadAttention(input_dim, 8, dropout=0)
-        self.class_embd = nn.Linear(input_dim, num_classes)
+        self.focal_loss = focal_loss
+        self.num_out = num_out
+        self.use_top_k = use_top_k
 
-    def forward(self, class_queries, tgt, pos_tgt):
-        tgt = tgt.reshape([self.num_frames, tgt.shape[1] // self.num_frames, tgt.shape[-1]])
-        pos_tgt = pos_tgt.reshape([self.num_frames, pos_tgt.shape[1] // self.num_frames, pos_tgt.shape[-1]])
+    def top_k_process_results(self, output_prob, boxes):
+        scores, top_k_indexes = torch.topk(output_prob.view(output_prob.shape[0], -1), self.num_out, dim=1)
+        query_top_k_indexes = top_k_indexes // output_prob.shape[2]
+        labels = top_k_indexes % output_prob.shape[2]
+        boxes = torch.gather(boxes, 1, query_top_k_indexes.unsqueeze(-1).repeat(1, 1, 4))
+        return scores, labels, boxes, query_top_k_indexes
 
-        class_tgt = self.cross_attn(class_queries[None], (tgt + pos_tgt), tgt)[0]
-        return self.class_embd(class_tgt)
+    def process_output(self, outputs):
+        out_logits, out_bbox = outputs['pred_logits'], outputs['pred_boxes']
+
+        if self.focal_loss:
+            output_probs = out_logits.sigmoid()
+        else:
+            output_probs = F.softmax(out_logits, -1)[..., :-1]
+
+        scores, labels, boxes, query_top_k_indexes = self.top_k_process_results(output_probs, out_bbox)
+        outputs["query_top_k_indexes"] = query_top_k_indexes
+
+        outputs["pre_computed_results"] = {
+            "scores": scores,
+            "labels": labels,
+            "boxes": boxes,
+        }
+        return outputs
+
+    @torch.no_grad()
+    def forward(self, outputs, target_sizes):
+        """ Perform the computation
+        Parameters:
+            outputs: raw outputs of the model
+            target_sizes: tensor of dimension [batch_size x 2] containing the size of each images of the batch
+                          For evaluation, this must be the original image size (before any data augmentation)
+                          For visualization, this should be the image size after data augment, but before padding
+        """
+        out_logits = outputs['pred_logits']
+
+        assert len(out_logits) == len(target_sizes)
+        assert target_sizes.shape[1] == 2
+
+        if "pre_computed_results" not in outputs:
+            outputs = self.process_output(outputs)
+
+        scores = outputs["pre_computed_results"]["scores"]
+        labels = outputs["pre_computed_results"]["labels"]
+        boxes = outputs["pre_computed_results"]["boxes"]
+        no_obj_scores = outputs["pre_computed_results"]["no_obj_score"]
+
+        boxes = process_boxes(boxes, target_sizes)
+
+        results = [
+            {'scores': s, 'scores_no_object': no_obs_s, 'labels': l, 'boxes': b}
+            for s, no_obs_s, l, b in zip(scores, no_obj_scores, labels, boxes)]
+
+        return results
 
 
 class MLP(nn.Module):

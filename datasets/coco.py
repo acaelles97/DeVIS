@@ -10,14 +10,17 @@ import torch.utils.data
 import torchvision
 from pycocotools import mask as coco_mask
 
-import datasets.transforms as T
+import datasets.coco_transforms as T
 
 
 class CocoDetection(torchvision.datasets.CocoDetection):
-    def __init__(self, img_folder, ann_file, transforms, return_masks):
+    def __init__(self, img_folder, ann_file, transforms, return_masks, remove_no_obj_images=True):
         super(CocoDetection, self).__init__(img_folder, ann_file)
         self._transforms = transforms
         self.prepare = ConvertCocoPolysToMask(return_masks)
+        if remove_no_obj_images:
+            self.ids = sorted(list(set(
+                [ann['image_id'] for ann in self.coco.loadAnns(self.coco.getAnnIds())])))
 
     def __getitem__(self, idx):
         img, target = super(CocoDetection, self).__getitem__(idx)
@@ -93,7 +96,8 @@ class ConvertCocoPolysToMask(object):
 
         target = {}
         target["boxes"] = boxes
-        target["labels"] = classes
+        target["labels"] = classes - 1
+
         if self.return_masks:
             target["masks"] = masks
         target["image_id"] = image_id
@@ -112,24 +116,37 @@ class ConvertCocoPolysToMask(object):
         return image, target
 
 
-def make_coco_transforms(image_set):
-
+def make_coco_transforms(image_set, img_transform=None):
     normalize = T.Compose([
         T.ToTensor(),
         T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
-
+    # default
+    max_size = 1333
+    val_width = 800
     scales = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
+    random_resizes = [400, 500, 600]
+    random_size_crop = (384, 600)
+
+    if img_transform is not None:
+        scale = img_transform.max_size / max_size
+        max_size = img_transform.max_size
+        val_width = img_transform.val_width
+
+        # scale all with respect to custom max_size
+        scales = [int(scale * s) for s in scales]
+        random_resizes = [int(scale * s) for s in random_resizes]
+        random_size_crop = [int(scale * s) for s in random_size_crop]
 
     if image_set == 'train':
         return T.Compose([
             T.RandomHorizontalFlip(),
             T.RandomSelect(
-                T.RandomResize(scales, max_size=1333),
+                T.RandomResize(scales, max_size=max_size),
                 T.Compose([
-                    T.RandomResize([400, 500, 600]),
-                    T.RandomSizeCrop(384, 600),
-                    T.RandomResize(scales, max_size=1333),
+                    T.RandomResize(random_resizes),
+                    T.RandomSizeCrop(random_size_crop),
+                    T.RandomResize(scales, max_size=max_size),
                 ])
             ),
             normalize,
@@ -137,7 +154,7 @@ def make_coco_transforms(image_set):
 
     if image_set == 'val':
         return T.Compose([
-            T.RandomResize([800], max_size=1333),
+            T.RandomResize([val_width], max_size=max_size),
             normalize,
         ])
 

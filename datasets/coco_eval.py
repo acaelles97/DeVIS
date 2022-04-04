@@ -36,6 +36,9 @@ class CocoEvaluator(object):
         img_ids = list(np.unique(list(predictions.keys())))
         self.img_ids.extend(img_ids)
 
+        for prediction in predictions.values():
+            prediction["labels"] += 1
+
         for iou_type in self.iou_types:
             results = self.prepare(predictions, iou_type)
 
@@ -62,7 +65,7 @@ class CocoEvaluator(object):
 
     def summarize(self):
         for iou_type, coco_eval in self.coco_eval.items():
-            print("IoU metric: {}".format(iou_type))
+            print(f"IoU metric: {iou_type}")
             coco_eval.summarize()
 
     def prepare(self, predictions, iou_type):

@@ -1,15 +1,21 @@
+from __future__ import annotations
 import random
-import torch.nn as nn
+from abc import ABC, abstractmethod
 import warnings
+from typing import List, Union
 import torch
+import torch.nn as nn
 import torchvision
+from torch import Tensor
 import torch.nn.functional as F
-# from util.misc import match_name_keywords
+
 from util.misc import NestedTensor
 from .matcher import HungarianMatcher
-from typing import List, Union
-from torch import Tensor
-from .deformable_vistr import AllPostProcessor, DeformableVisTR
+from .deformable_detr import DefDETRPostProcessor, DeformableDETR
+# To circumvent cyclic import for typing
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .devis_segmentation import DeVISPostProcessor
 
 ch_dict_en = {
     "/64": 256,
@@ -34,50 +40,33 @@ backbone_res_to_idx = {
 }
 
 
-class DeformableVisTRsegm(nn.Module):
-    def __init__(self, vistr: DeformableVisTR, only_positive_matches: bool, matcher: HungarianMatcher,
-                 mask_head_used_features: List[List[str]], att_maps_used_res: List[str], use_deformable_conv: bool,
-                 post_processor: AllPostProcessor, top_k_inference: Union[int, None], mask_aux_loss: list):
+class DefDETRSegmBase(nn.Module, ABC):
+
+    def __init__(self, defdetr: DeformableDETR, matcher: HungarianMatcher, mask_head_used_features: List[List[str]], att_maps_used_res: List[str], use_deformable_conv: bool,
+                 post_processor: Union[DefDETRPostProcessor, DeVISPostProcessor], mask_aux_loss: List):
 
         super().__init__()
-        self.vistr = vistr
-        self.only_positive = only_positive_matches
-        self.top_k_inference = top_k_inference
-        self.matcher = matcher
+        self.def_detr = defdetr
         self.mask_aux_loss = mask_aux_loss
-        self.mask_head_used_features = [['/32', 'encoded'], ['/16', 'backbone'], ['/8', 'backbone'], ['/4', 'backbone']]
-        self.att_maps_used_res = ['/32']
+        self.matcher = matcher
+        self.mask_head_used_features = mask_head_used_features
+        self.att_maps_used_res = att_maps_used_res
         self.postprocessor = post_processor
-        self._sanity_check()
-        feats_dims = self._get_mask_head_dims()
-        hidden_dim, nheads = self.vistr.transformer.d_model, self.vistr.transformer.nhead_dec
-        self.mask_head_hidden_size = hidden_dim // 16
-        self.bbox_attention = MultiScaleMHAttentionMap(hidden_dim, hidden_dim, nheads, dropout=0, num_levels=1)
-        self.mask_head = MaskHeadConv(hidden_dim, feats_dims, nheads, False, self.att_maps_used_res)
 
-        self.insmask_head = nn.Sequential(
-                                nn.Conv3d(self.mask_head_hidden_size, 12, 3, padding=2, dilation=2),
-                                nn.GroupNorm(4,12),
-                                nn.ReLU(),
-                                nn.Conv3d(12,12,3,padding=2,dilation=2),
-                                nn.GroupNorm(4,12),
-                                nn.ReLU(),
-                                nn.Conv3d(12,12,3,padding=2,dilation=2),
-                                nn.GroupNorm(4,12),
-                                nn.ReLU(),
-                                nn.Conv3d(12,1,1))
+        self._sanity_check()
+
+        feats_dims = self._get_mask_head_dims()
+
+        hidden_dim, nheads = self.def_detr.transformer.d_model, self.def_detr.transformer.nhead
+
+        self.bbox_attention = MultiScaleMHAttentionMap(hidden_dim, hidden_dim, nheads, dropout=0, num_levels=len(self.att_maps_used_res))
+
+        self.mask_head = MaskHeadConv(hidden_dim, feats_dims, nheads, use_deformable_conv, self.att_maps_used_res)
 
     def _sanity_check(self):
         init_mask_head_res, init_att_map_res = self.mask_head_used_features[0][0], self.att_maps_used_res[0]
         assert init_mask_head_res == init_att_map_res, f"Starting resolution for the mask_head_used features and att_maps_used_res has to be " \
                                                        f"the same. Got {init_mask_head_res} and {init_att_map_res} respectively"
-        parent_class = [base.__name__ for base in self.__class__.__bases__]
-        for cls in parent_class:
-            if cls == "DETR":
-                assert self.mask_head_used_features == [['/32', 'compressed_backbone'], ['/16', 'backbone'], ['/8', 'backbone'], ['/4', 'backbone']], \
-                    "Only the following mask_head_used_features are available for DeTR: " \
-                    "[['/32','compressed_backbone'], ['/16','backbone'], ['/8','backbone'], ['/4','backbone']]"
-                assert self.att_maps_used_res == ['/32'], "Only the following mask head features are available for DeTR"
 
     def _get_mask_head_dims(self):
         feats_dims = []
@@ -85,7 +74,7 @@ class DeformableVisTRsegm(nn.Module):
             if name == "backbone":
                 feats_dims.append(ch_dict_en[res])
             else:
-                feats_dims.append(self.vistr.transformer.d_model)
+                feats_dims.append(self.def_detr.transformer.d_model)
         return feats_dims
 
     @staticmethod
@@ -95,7 +84,6 @@ class DeformableVisTRsegm(nn.Module):
         src_idx = torch.cat([src for src in indices])
         return batch_idx, src_idx
 
-
     def _get_features_for_mask_head(self, backbone_feats: List[Tensor], srcs: List[Tensor], memories: List[Tensor]):
         features_used = []
         for res, feature_type in self.mask_head_used_features:
@@ -104,7 +92,9 @@ class DeformableVisTRsegm(nn.Module):
                     warnings.warn("/64 feature map is only generated for encoded and compressed backbone feats. Using the compressed one")
                     features_used.append(srcs[res_to_idx[res]])
                 else:
-                    features_used.append(backbone_feats[backbone_res_to_idx[res]].tensors.unsqueeze(0).transpose(1,2))
+                    # TODO check this
+                    features_used.append(backbone_feats[backbone_res_to_idx[res]].tensors.unsqueeze(0).transpose(1, 2))
+
             elif feature_type == "compressed_backbone":
                 if res == "/4":
                     warnings.warn("/4 feature map is only generated for backbone. Using backbone")
@@ -123,109 +113,112 @@ class DeformableVisTRsegm(nn.Module):
                     f"Selected feature type {feature_type} is not available. Available ones: [backbone, compressed_backbone, encoded]")
         return features_used
 
-    def _get_training_embeddings(self, out, targets, hs, lvl):
-        n_f = self.vistr.num_queries if  self.vistr.use_trajectory_queries else self.vistr.num_queries // self.vistr.num_frames
-        if not self.only_positive:
-            num_trajectories = n_f
-            hs_f = hs[lvl][0].view(self.vistr.num_frames, num_trajectories, hs.shape[-1])
+    def forward(self, samples: NestedTensor, targets: list):
+        out, backbone_feats, memories, hs, query_pos, srcs, masks, init_reference, inter_references, \
+        level_start_index, valid_ratios, spatial_shapes = self.def_detr(samples, targets)
 
-        else:
-            outputs_without_aux = {k: v for k, v in out.items() if k != 'aux_outputs' and k != 'enc_outputs' and k != 'hs_embed'}
-            indices, embd_matched_idx, valid_ind, original_valid_ordered_ind = self.matcher(outputs_without_aux, targets, return_embd_idx=True)
-            if embd_matched_idx is None:
-                # Generate temporal mask for 1 instance, which will be thrown away later on
-                embd_matched_idx = [torch.arange(self.vistr.num_frames, device=hs.device) * n_f]
+        memories_att_map = [memories[res_to_idx[res]] for res in self.att_maps_used_res]
+        masks_att_map = [masks[res_to_idx[res]] for res in self.att_maps_used_res]
+        mask_head_feats = self._get_features_for_mask_head(backbone_feats, srcs, memories)
 
-            num_trajectories = len(embd_matched_idx)
-            matched_hs = []
-            for idx in embd_matched_idx:
-                matched_hs.append(hs[lvl][0, idx])
-            hs_f = torch.stack(matched_hs, dim=1)
-            out["indices"] = indices
-            out["mask_valid_ind"] = valid_ind
-            out["original_valid_ordered_ind"] = original_valid_ordered_ind
-        return hs_f, num_trajectories
-
-    def _get_eval_top_k_embeddings(self, out, targets, hs, inter_references):
-        process_boxes = targets["process_boxes"] if "process_boxes" in targets else True
-        top_k_idxs, results = self.postprocessor(out, targets["tgt_size"], targets["clip_length"], process_boxes)
-        top_k_embeddings, inverse_idxs = torch.unique(top_k_idxs, return_inverse=True)
-        if inter_references.shape[-1] == 4:
-            results["centroid_points"] = inter_references[:, top_k_embeddings, :2]
-        else:
-            results["centroid_points"] = inter_references[:, top_k_embeddings]
-
-        num_trajectories = top_k_embeddings.shape[0]
-        hs_f = hs[:, top_k_embeddings]
-
-        return  hs_f, num_trajectories, results, inverse_idxs
+        return out, hs, memories_att_map, mask_head_feats, masks_att_map
 
 
-    def _module_inference(self, hs_f, memories_att_map_f, masks_att_map, mask_head_feats_f, num_trajectories):
-        bbox_mask_f = self.bbox_attention(hs_f, memories_att_map_f, mask=masks_att_map)
-        bbox_mask_flattened = [bbox_mask.transpose(1, 0).flatten(0, 1) for bbox_mask in bbox_mask_f]
-        seg_masks_f = self.mask_head(mask_head_feats_f, bbox_mask_flattened, instances_per_batch=num_trajectories)
-        outputs_seg_masks_ins = seg_masks_f.view((num_trajectories, self.vistr.num_frames) + seg_masks_f.shape[1:]).transpose(2, 1)
-        outputs_seg_masks = self.insmask_head(outputs_seg_masks_ins)
-        return outputs_seg_masks
+class DeformableDETRSegm(DefDETRSegmBase):
 
-    def forward(self, samples: NestedTensor, targets: dict):
-        out, backbone_feats, memories_flatten, memories, hs, query_pos, srcs, masks, init_reference, inter_references, \
-        level_start_index, valid_ratios, spatial_shapes, hook_data = self.vistr(samples, targets)
+    @staticmethod
+    def get_src_permutation_idx(indices: List[Tensor]):
+        # permute predictions following indices
+        batch_idx = torch.cat([torch.full_like(src, i) for i, src in enumerate(indices)])
+        src_idx = torch.cat([src for src in indices])
+        return batch_idx, src_idx
 
-        if len(memories) == 1 and self.vistr.num_feature_levels == 1:
-            memories_att_map_f = [memories[0][0].transpose(0, 1)]
-            masks_att_map = masks
-            mask_head_feats_f =   [memories[0][0].transpose(0, 1)] +  [feat.tensors for feat in backbone_feats[:-1][::-1]]
-
-        else:
-            if not isinstance(memories, list):
-                memories_att_map, masks_att_map = [memories], [masks]
+    @staticmethod
+    def tmp_batch_fill(num_embd: int, matched_indices: List[Tensor]):
+        new_indices = []
+        max_num = max([idx[0].shape[0] for idx in matched_indices])
+        all_pos = set(range(0, num_embd))
+        for idx, (embd_idxs, _) in enumerate(matched_indices):
+            num_to_fill = max_num - len(embd_idxs)
+            if num_to_fill > 0:
+                batch_ids = set(embd_idxs.tolist())
+                unmatched_embds = random.choices(list(all_pos.difference(batch_ids)), k=num_to_fill)
+                new_embd_idxs = torch.cat([embd_idxs, torch.tensor(unmatched_embds, dtype=torch.int64)])
+                new_indices.append(new_embd_idxs)
             else:
-                memories_att_map = [memories[res_to_idx[res]] for res in self.att_maps_used_res]
-                masks_att_map = [masks[res_to_idx[res]] for res in self.att_maps_used_res]
+                new_indices.append(embd_idxs)
 
-            # Take
-            if not isinstance(srcs, list):
-                mask_head_feats = [srcs, backbone_feats[2].tensors, backbone_feats[1].tensors, backbone_feats[0].tensors]
-            else:
-                mask_head_feats = self._get_features_for_mask_head(backbone_feats, srcs, memories)
+        return new_indices
 
-            # image level processing using box attention
-            memories_att_map_f = [memory[0].transpose(0, 1) for memory in memories_att_map]
-            mask_head_feats_f = [feat[0].transpose(0, 1) for feat in mask_head_feats]
+    def _get_matched_with_filled_embeddings(self, indices: List[Tensor], hs: Tensor, lvl: int):
+        instances_per_batch = [idx[0].shape[0] for idx in indices]
+        filled_indices = self.tmp_batch_fill(hs.shape[2], indices)
+        num_filled_instances = len(filled_indices[0])
+        matched_indices = self.get_src_permutation_idx(filled_indices)
+        matched_embeddings = hs[lvl][matched_indices].view(hs.shape[1], num_filled_instances, hs.shape[-1])
+        return matched_embeddings, instances_per_batch
+
+    def _get_training_embeddings(self, out, targets, hs, loss_lvl):
+        outputs_without_aux = {k: v for k, v in out.items() if k != 'aux_outputs' and k != 'enc_outputs' and k != 'hs_embed'}
+        indices = self.matcher(outputs_without_aux, targets)
+        out["indices"] = indices
+        matched_embeddings, instances_per_batch = self._get_matched_with_filled_embeddings(indices, hs, loss_lvl)
+        indices_to_pick = [torch.arange(0, num_instances) for num_instances in instances_per_batch]
+        indices_to_pick = self.get_src_permutation_idx(indices_to_pick)
+
+        return matched_embeddings, indices_to_pick, instances_per_batch
+
+    def _module_inference(self, matched_embeddings, memories_att_map, masks_att_map, mask_head_feats, indices_to_pick, instances_per_batch):
+        # Module inference
+        bbox_masks = self.bbox_attention(matched_embeddings, memories_att_map, mask=masks_att_map)
+        # We need to remove padded instances
+        if self.training:
+            bbox_masks = [bbox_mask[indices_to_pick] for bbox_mask in bbox_masks]
+        else:
+            bbox_masks = [bbox_mask.flatten(0, 1) for bbox_mask in bbox_masks]
+
+        seg_masks = self.mask_head(mask_head_feats, bbox_masks, instances_per_batch=instances_per_batch)
+
+        if self.training:
+            return seg_masks
+
+        return seg_masks.view(matched_embeddings.shape[1], instances_per_batch, seg_masks.shape[-2], seg_masks.shape[-1])
+
+    def _get_eval_embeddings(self, out, hs):
+
+        out_processed = self.postprocessor.process_output(out)
+        query_top_k_indexes = out_processed["query_top_k_indexes"]
+        objs_embeddings = torch.gather(hs[-1], 1, query_top_k_indexes.unsqueeze(-1).repeat(1, 1, hs.shape[-1]))
+
+        instances_per_batch = objs_embeddings.shape[1]
+
+        return objs_embeddings, instances_per_batch, out_processed
+
+    def _training_forward(self, targets, out, hs, loss_lvl, memories_att_map, masks_att_map, mask_head_feats):
+
+        matched_embeddings, indices_to_pick, instances_per_batch = self._get_training_embeddings(out, targets, hs, loss_lvl)
+        out["pred_masks"] = self._module_inference(matched_embeddings, memories_att_map, masks_att_map, mask_head_feats, indices_to_pick, instances_per_batch)
+
+        return out
+
+    def _inference_forward(self, out, hs, memories_att_map, masks_att_map, mask_head_feats):
+        eval_embeddings, instances_per_batch, out_processed = self._get_eval_embeddings(out, hs)
+        out["pred_masks"] = self._module_inference(eval_embeddings, memories_att_map, masks_att_map, mask_head_feats, None, instances_per_batch)
+        return out
+
+    def forward(self, samples: NestedTensor, targets: list = None):
+        out, hs, memories_att_map, mask_head_feats, masks_att_map = super().forward(samples, targets)
 
         if self.training:
             loss_levels = [-1] + self.mask_aux_loss
             for loss_lvl in loss_levels:
                 out_lvl = out if loss_lvl == -1 else out["aux_outputs"][loss_lvl]
-                hs_f, num_trajectories = self._get_training_embeddings(out_lvl, targets, hs, loss_lvl)
-                outputs_seg_masks = self._module_inference(hs_f, memories_att_map_f, masks_att_map, mask_head_feats_f, num_trajectories)
-                if self.only_positive:
-                    out_lvl["pred_masks"] = outputs_seg_masks.transpose(2, 1).squeeze(2).flatten(0, 1)
-                else:
-                    out_lvl["pred_masks"] = outputs_seg_masks.transpose(2, 1).squeeze(2).transpose(0, 1).flatten(0, 1).unsqueeze(0)
-
-            return out
+                self._training_forward(targets, out_lvl, hs, loss_lvl, memories_att_map, masks_att_map, mask_head_feats)
 
         else:
-            num_trajectories = self.vistr.num_queries if self.vistr.use_trajectory_queries else self.vistr.num_queries // self.vistr.num_frames
-            hs_f = hs[-1][0].view(self.vistr.num_frames, num_trajectories, hs.shape[-1])
-            inter_references = inter_references[-1][0].view(self.vistr.num_frames, num_trajectories, inter_references.shape[-1])
-            if self.top_k_inference is not None:
-                hs_f, num_trajectories, results, inverse_idxs = self._get_eval_top_k_embeddings(out, targets, hs_f, inter_references)
-                outputs_seg_masks = self._module_inference(hs_f, memories_att_map_f, masks_att_map, mask_head_feats_f, num_trajectories)
-                out_masks = outputs_seg_masks.transpose(2, 1).squeeze(2).transpose(0, 1)
-                results["centroid_points"] = results["centroid_points"][:targets["clip_length"]]
-                results["masks"] = out_masks[:targets["clip_length"]]
-                results["inverse_idxs"] = inverse_idxs
-            else:
-                outputs_seg_masks = self._module_inference(hs_f, memories_att_map_f, masks_att_map, mask_head_feats_f, num_trajectories)
-                out["pred_masks"] = outputs_seg_masks.transpose(2, 1).squeeze(2).transpose(0, 1).flatten(0, 1).unsqueeze(0)
-                process_boxes = targets["process_boxes"] if "process_boxes" in targets else True
-                results = self.postprocessor(out, targets["tgt_size"], targets["clip_length"], process_boxes)
+            return self._inference_forward(out, hs, memories_att_map, masks_att_map, mask_head_feats)
 
-            return results
+
 
 class ModulatedDeformableConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False):
@@ -324,8 +317,8 @@ class MaskHeadConv(nn.Module):
         super().__init__()
 
         num_levels = len(fpn_dims) + 1
-        out_dims = [dim // (2 ** exp) for exp in range(num_levels + 1)]
-        in_dims = [dim // (2 ** exp) for exp in range(num_levels + 1)]
+        out_dims = [dim // (2 ** exp) for exp in range(num_levels + 2)]
+        in_dims = [dim // (2 ** exp) for exp in range(num_levels + 2)]
         for i in range(len(multi_scale_att_maps)):
             in_dims[i] += nheads
 
@@ -342,6 +335,8 @@ class MaskHeadConv(nn.Module):
             setattr(self, f"lay{i + 2}", conv_layer(in_dims[i], out_dims[i + 1], 3, padding=1))
             setattr(self, f"gn{i + 2}", torch.nn.GroupNorm(8, out_dims[i + 1]))
             setattr(self, f"adapter{i}", Conv2d(fpn_dims[i - 1], out_dims[i], 1, padding=0))
+
+        self.out_lay = conv_layer(out_dims[i + 1], 1, 3, padding=1)
 
     def forward(self, features, bbox_mask, instances_per_batch):
 
@@ -363,5 +358,92 @@ class MaskHeadConv(nn.Module):
             x = getattr(self, f"lay{lvl + 3}")(x)
             x = getattr(self, f"gn{lvl + 3}")(x)
             x = F.relu(x)
+        x = self.out_lay(x)
 
         return x
+
+
+def dice_loss(inputs, targets, num_boxes):
+    """
+    Compute the DICE loss, similar to generalized IOU for masks
+    Args:
+        inputs: A float tensor of arbitrary shape.
+                The predictions for each example.
+        targets: A float tensor with the same shape as inputs. Stores the binary
+                 classification label for each element in inputs
+                (0 for the negative class and 1 for the positive class).
+    """
+    inputs = inputs.sigmoid()
+    inputs = inputs.flatten(1)
+    numerator = 2 * (inputs * targets).sum(1)
+    denominator = inputs.sum(-1) + targets.sum(-1)
+    loss = 1 - (numerator + 1) / (denominator + 1)
+    return loss.sum() / num_boxes
+
+
+def sigmoid_focal_loss(inputs, targets, num_boxes, alpha: float = 0.25, gamma: float = 2, reduce=True):
+    """
+    Loss used in RetinaNet for dense detection: https://arxiv.org/abs/1708.02002.
+    Args:
+        inputs: A float tensor of arbitrary shape.
+                The predictions for each example.
+        targets: A float tensor with the same shape as inputs. Stores the binary
+                 classification label for each element in inputs
+                (0 for the negative class and 1 for the positive class).
+        alpha: (optional) Weighting factor in range (0,1) to balance
+                positive vs negative examples. Default = -1 (no weighting).
+        gamma: Exponent of the modulating factor (1 - p_t) to
+               balance easy vs hard examples.
+    Returns:
+        Loss tensor
+    """
+    prob = inputs.sigmoid()
+    ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
+    p_t = prob * targets + (1 - prob) * (1 - targets)
+    loss = ce_loss * ((1 - p_t) ** gamma)
+
+    if alpha >= 0:
+        alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
+        loss = alpha_t * loss
+    if reduce:
+        return loss.mean(1).sum() / num_boxes
+    else:
+        return loss.mean(1).sum()
+
+
+class DefDETRSegmPostProcess(nn.Module):
+    def __init__(self, threshold=0.5):
+        super().__init__()
+        self.threshold = threshold
+
+    @torch.no_grad()
+    def forward(self, results, outputs, orig_target_sizes, max_target_sizes, return_probs=False):
+        assert len(orig_target_sizes) == len(max_target_sizes)
+        max_h, max_w = max_target_sizes.max(0)[0].tolist()
+        if "inference_masks" in outputs:
+            outputs_masks = outputs["inference_masks"]
+        else:
+            outputs_masks = outputs["pred_masks"].squeeze(2)
+
+        outputs_masks = F.interpolate(
+            outputs_masks,
+            size=(max_h, max_w),
+            mode="bilinear",
+            align_corners=False)
+
+        outputs_masks = outputs_masks.sigmoid().cpu()
+        if not return_probs:
+            outputs_masks = outputs_masks > self.threshold
+
+        zip_iter = zip(outputs_masks, max_target_sizes, orig_target_sizes)
+        for i, (cur_mask, t, tt) in enumerate(zip_iter):
+            img_h, img_w = t[0], t[1]
+            results[i]["masks"] = cur_mask[:, :img_h, :img_w].unsqueeze(1)
+            results[i]["masks"] = F.interpolate(
+                results[i]["masks"].float(), size=tuple(tt.tolist()), mode="nearest"
+            )
+
+            if not return_probs:
+                results[i]["masks"] = results[i]["masks"].byte()
+
+        return results

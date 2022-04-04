@@ -3,13 +3,14 @@ import numpy as np
 import cv2
 from torchvision.transforms import Normalize, ToTensor
 from torchvision.transforms import Compose as PyTorchCompose
-from datasets.transforms import RandomContrast, ConvertColor, RandomSaturation, RandomHue, RandomBrightness, RandomLightingNoise, Compose
+from datasets.coco_transforms import RandomContrast, ConvertColor, RandomSaturation, RandomHue, RandomBrightness, RandomLightingNoise, Compose
 from util.box_ops import box_xyxy_to_cxcywh, masks_to_boxes
 import warnings
 from pycocotools import mask as coco_mask
-
+from datasets.coco_transforms import get_size
 import torch
-
+from typing import List
+import torchvision.transforms.functional as F
 
 
 def convert_coco_poly_to_bool_mask_numpy(segmentation, height, width):
@@ -44,7 +45,7 @@ class ConvertCocoPolysToValuedMaskNumpy(object):
 
         boxes = np.zeros((num_frames, len(anno), 4), dtype=np.float32)
         classes = np.zeros((num_frames, len(anno)), dtype=np.int64)
-        segmentations = np.zeros((num_frames,  h, w, 1), dtype=np.uint8)
+        segmentations = np.zeros((num_frames, h, w, 1), dtype=np.uint8)
         area = torch.zeros((num_frames, len(anno)))
         iscrowd = torch.zeros((num_frames, len(anno)))
         valid = torch.zeros((num_frames, len(anno)), dtype=torch.int64)
@@ -55,9 +56,9 @@ class ConvertCocoPolysToValuedMaskNumpy(object):
             for i, ann in enumerate(anno):
                 tmp_identifier.append(f"Instance {i} Frame {j}")
                 # current_idx = i * num_frames + j
-                bbox = ann['bboxes'][frame_id-inds[j]]
-                areas = ann['areas'][frame_id-inds[j]]
-                segm = ann['segmentations'][frame_id-inds[j]]
+                bbox = ann['bboxes'][frame_id - inds[j]]
+                areas = ann['areas'][frame_id - inds[j]]
+                segm = ann['segmentations'][frame_id - inds[j]]
                 label = ann["category_id"]
 
                 # for empty boxes
@@ -80,6 +81,7 @@ class ConvertCocoPolysToValuedMaskNumpy(object):
                 classes[j, i] = label
                 iscrowd[j, i] = crowd
             clip_instances.append(frame_instances)
+
         boxes[:, :, 2:] += boxes[:, :, :2]
         boxes[:, :, 0::2] = boxes[:, :, 0::2].clip(min=0, max=w)
         boxes[:, :, 1::2] = boxes[:, :, 1::2].clip(min=0, max=h)
@@ -88,7 +90,6 @@ class ConvertCocoPolysToValuedMaskNumpy(object):
                   "iscrowd": iscrowd, "orig_size": torch.as_tensor([int(h), int(w)]), "tmp_identifier": tmp_identifier, "clip_instances": clip_instances}
 
         return target
-
 
 
 def compute_resize_params(image_size, size, max_size):
@@ -123,7 +124,7 @@ def create_binary_masks(num_instances, uint_mask):
     unique_instances = set(np.unique(uint_mask)) - {0}
     for idx in range(num_instances):
         mask = torch.zeros(height, width, dtype=torch.bool)
-        if (idx+1) in unique_instances:
+        if (idx + 1) in unique_instances:
             if len(uint_mask.shape) == 3:
                 mask[uint_mask[:, :, 0] == (idx + 1)] = True
             else:
@@ -149,12 +150,47 @@ def compute_region(in_size, min_size, max_size):
     if w == tw and h == th:
         return 0, 0, h, w
 
-    i = torch.randint(0, h - th + 1, size=(1, )).item()
-    j = torch.randint(0, w - tw + 1, size=(1, )).item()
+    i = random.randint(0, h - th + 1)
+    j = random.randint(0, w - tw + 1)
+
+    # i = torch.randint(0, h - th + 1, size=(1,)).item()
+    # j = torch.randint(0, w - tw + 1, size=(1,)).item()
+
+    # print(f"in_size {in_size} min_size {min_size} max_size {max_size}")
+    # print(f"tw {tw} th {th} i {i} j {j}")
+
     return i, j, th, tw
 
 
-class ToTensorWithProcessing:
+def resize_clip(clip, target, size, max_size=None):
+    # size can be min_size (scalar) or (w, h) tuple
+    if isinstance(clip, list):
+        size = get_size(clip[0].size, size, max_size)
+        rescaled_image = []
+        for image in clip:
+            rescaled_image.append(F.resize(image, size))
+
+    else:
+        size = get_size(clip.size, size, max_size)
+        rescaled_image = F.resize(clip, size)
+        return rescaled_image
+
+    if target is None:
+        return rescaled_image, None
+
+
+class VISRandomClipResize(object):
+    def __init__(self, sizes, max_size=None):
+        assert isinstance(sizes, (list, tuple))
+        self.sizes = sizes
+        self.max_size = max_size
+
+    def __call__(self, img, target=None):
+        size = random.choice(self.sizes)
+        return resize_clip(img, target, size, self.max_size)
+
+
+class VISToTensorWithPostProcessing:
 
     def __init__(self, create_bbx_from_mask):
         self.image_transform = PyTorchCompose([
@@ -165,7 +201,6 @@ class ToTensorWithProcessing:
 
     def __call__(self, image, target):
         image = self.image_transform(image)
-        # TODO: FIX BBX TO CORRECT FORMAT
         h, w = image.shape[-2:]
         target["boxes"] = torch.as_tensor(target["boxes"], dtype=torch.float32)
         target["boxes"] = box_xyxy_to_cxcywh(target["boxes"])
@@ -181,11 +216,12 @@ class ToTensorWithProcessing:
         target["centroids"] = torch.zeros(num_objs, 2)
         for i in range(target["masks"].shape[0]):
             area = torch.sum(target["masks"][i])
-            if area <= 5:
+            if area <= 2:
                 target["boxes"][i] = torch.zeros(4)
                 target["valid"][i] = torch.tensor(0)
                 target["labels"][i] = torch.tensor(0)
                 target["area"][i] = torch.tensor(0)
+
             else:
                 if self.create_bbx_from_mask:
                     new_bbx = masks_to_boxes(target["masks"][i][None])
@@ -200,7 +236,7 @@ class ToTensorWithProcessing:
         return image, target
 
 
-class CustomResize(object):
+class VISResize(object):
     def __init__(self, sizes):
         self.sizes = sizes
         self.out_size = None
@@ -216,7 +252,6 @@ class CustomResize(object):
         return kwargs
 
     def __call__(self, image, target):
-        # image = F.resize(image, self.out_size[0], self.out_size[1])
         original_shape = image.shape[:2]
         image = cv2.resize(image, (self.out_size[1], self.out_size[0]), interpolation=cv2.INTER_LINEAR)
 
@@ -227,7 +262,6 @@ class CustomResize(object):
             target["boxes"] = target["boxes"] * np.asarray([ratio_width, ratio_height, ratio_width, ratio_height])
 
         if "masks" in target:
-            # target["masks"] = F.resize(target["masks"], self.out_size[0], self.out_size[1], interpolation=cv2.INTER_NEAREST)
             target["masks"] = cv2.resize(target["masks"], (self.out_size[1], self.out_size[0]), interpolation=cv2.INTER_NEAREST)
 
         if "area" in target:
@@ -238,7 +272,7 @@ class CustomResize(object):
         return image, target
 
 
-class CustomRandomCrop:
+class VISRandomCrop:
     def __init__(self, size):
         self.size = size
         self.region = None
@@ -246,6 +280,8 @@ class CustomRandomCrop:
     def init_clip_transform(self, **kwargs):
         size = kwargs["size"]
         self.region = compute_region(size, *self.size)
+
+
         kwargs["size"] = self.region[2:]
         kwargs["previousShape_crop"] = size
         return kwargs
@@ -254,7 +290,7 @@ class CustomRandomCrop:
         i, j, h, w = self.region
         # Check case in which image is shorter than the crop, just return then
         if i == -1 or j == -1:
-            return  image, target
+            return image, target
 
         image = image[i:i + h, j:j + w, ...]
 
@@ -275,7 +311,7 @@ class CustomRandomCrop:
         return image, target
 
 
-class CustomHorizontalFlip:
+class VISHorizontalFlip:
     def __init__(self, p=0.5):
         self.p = p
         self.do_flip = None
@@ -302,7 +338,7 @@ class CustomHorizontalFlip:
         return image, target
 
 
-class PhotometricDistort(object):
+class VISPhotometricDistort(object):
     def __init__(self, p=0.5):
         self.pd = [
             RandomContrast(upper=1.3),
@@ -332,11 +368,12 @@ class PhotometricDistort(object):
         return image, target
 
 
-class CustomRandomSelect:
+class VISRandomSelect:
     """
     Randomly selects between transforms1 and transforms2,
     with probability p for transforms1 and (1 - p) for transforms2
     """
+
     def __init__(self, transforms1, transforms2, p=0.5):
         self.transform1 = transforms1
         self.transform2 = transforms2
@@ -362,7 +399,8 @@ class CustomRandomSelect:
 
         return image, target
 
-class CustomCompose(object):
+
+class VISCompose(object):
     def __init__(self, transforms):
         self.transforms = transforms
 
@@ -379,196 +417,20 @@ class CustomCompose(object):
 
         return image, target
 
-class ClipTransformsApplier:
-    def __init__(self, transform_strategy, max_size, out_scale, use_non_valid_class, create_bbx_from_mask, use_instance_level_classes):
-        scales = [480, 512, 544, 576, 608, 640, 672, 704, 736, 768]
-        scales_before_crop = [400, 500, 600]
-        random_sized_crop = (384, 600)
-        self.use_non_valid_class = use_non_valid_class
-        self.use_instance_level_classes = use_instance_level_classes
+
+class VISTransformsApplier:
+
+    def __init__(self, transforms: List):
+        self.transforms = transforms
         self.target_keys = ["masks", "boxes", "labels", "valid", "area"]
 
-        if transform_strategy == "vistr":
-            if out_scale != 1.0:
-                # scale all with respect to custom max_size
-                scales = [int(out_scale * s) for s in scales]
-                scales_before_crop = [int(out_scale * s) for s in scales_before_crop]
-                random_sized_crop = tuple([int(out_scale * s) for s in random_sized_crop])
-                max_size = int(max_size * out_scale)
-
-            out_shorter_edge = ([int(300 * out_scale)], int(540 * out_scale))
-
-            scales = (scales, max_size)
-            scales_before_crop = (scales_before_crop, None)
-
-            self.transforms = [
-                CustomHorizontalFlip(),
-                CustomResize(scales),
-                PhotometricDistort(),
-                CustomResize(scales_before_crop),
-                CustomRandomCrop(random_sized_crop),
-                CustomResize(out_shorter_edge),
-                ToTensorWithProcessing(create_bbx_from_mask),
-            ]
-
-        elif transform_strategy == "defdetr":
-            defdetr_max_size = 1333
-            if max_size != defdetr_max_size:
-                scale = max_size / defdetr_max_size
-                # scale all with respect to custom max_size
-                scales = [int(scale * s) for s in scales]
-                scales_before_crop = [int(scale * s) for s in scales_before_crop]
-                random_sized_crop = [int(scale * s) for s in random_sized_crop]
-
-            scales = (scales, max_size)
-            scales_before_crop = (scales_before_crop, None)
-
-            self.transforms = [
-                CustomHorizontalFlip(),
-                # TODO: Check impact of photometric on this scenario
-                # PhotometricDistort(),
-                CustomRandomSelect(
-                    CustomResize(scales),
-                    CustomCompose([
-                        CustomResize(scales_before_crop),
-                        CustomRandomCrop(random_sized_crop),
-                        CustomResize(scales),
-                    ])
-                ),
-                ToTensorWithProcessing(create_bbx_from_mask),
-            ]
-
-        elif transform_strategy == "seqformer":
-            scales = [288, 320, 352, 392, 416, 448, 480, 512]
-            scales = (scales, 768)
-            scales_before_crop = (scales_before_crop, None)
-
-            self.transforms = [
-                CustomHorizontalFlip(),
-                PhotometricDistort(),
-                CustomRandomSelect(
-                    CustomResize(scales),
-                    CustomCompose([
-                        CustomResize(scales_before_crop),
-                        CustomRandomCrop(random_sized_crop),
-                        CustomResize(scales),
-                    ])
-                ),
-                ToTensorWithProcessing(create_bbx_from_mask),
-            ]
-
-        elif transform_strategy == "ovis":
-            scales = [288, 320, 352, 392, 416]
-            scales = (scales, 678)
-            scales_before_crop = (scales_before_crop, None)
-
-            self.transforms = [
-                CustomHorizontalFlip(),
-                PhotometricDistort(),
-                CustomRandomSelect(
-                    CustomResize(scales),
-                    CustomCompose([
-                        CustomResize(scales_before_crop),
-                        CustomRandomCrop(random_sized_crop),
-                        CustomResize(scales),
-                    ])
-                ),
-                ToTensorWithProcessing(create_bbx_from_mask),
-            ]
-
-
-        elif transform_strategy == "defdetr_lower_res":
-            scales = [480, 512, 544, 576, 608, 640, 672, 704]
-            max_size = 768
-            defdetr_max_size = 1333
-            if max_size != defdetr_max_size:
-                scale = 800 / defdetr_max_size
-                # scale all with respect to custom max_size
-                scales = [int(scale * s) for s in scales]
-                scales_before_crop = [int(scale * s) for s in scales_before_crop]
-                random_sized_crop = [int(scale * s) for s in random_sized_crop]
-
-            scales = (scales, max_size)
-            scales_before_crop = (scales_before_crop, None)
-
-            self.transforms = [
-                CustomHorizontalFlip(),
-                # TODO: Check impact of photometric on this scenario
-                PhotometricDistort(),
-                CustomRandomSelect(
-                    CustomResize(scales),
-                    CustomCompose([
-                        CustomResize(scales_before_crop),
-                        CustomRandomCrop(random_sized_crop),
-                        CustomResize(scales),
-                    ])
-                ),
-                ToTensorWithProcessing(create_bbx_from_mask),
-            ]
-
-        elif transform_strategy == "defdetr_lower_res_photometric":
-            scales = [480, 512, 544, 576, 608, 640, 672, 704]
-            defdetr_max_size = 1333
-            if max_size != defdetr_max_size:
-                scale = max_size / defdetr_max_size
-                # scale all with respect to custom max_size
-                scales = [int(scale * s) for s in scales]
-                scales_before_crop = [int(scale * s) for s in scales_before_crop]
-                random_sized_crop = [int(scale * s) for s in random_sized_crop]
-
-            scales = (scales, max_size)
-            scales_before_crop = (scales_before_crop, None)
-
-            self.transforms = [
-                CustomHorizontalFlip(),
-                # TODO: Check impact of photometric on this scenario
-                PhotometricDistort(),
-                CustomRandomSelect(
-                    CustomResize(scales),
-                    CustomCompose([
-                        CustomResize(scales_before_crop),
-                        CustomRandomCrop(random_sized_crop),
-                        CustomResize(scales),
-                    ])
-                ),
-                ToTensorWithProcessing(create_bbx_from_mask),
-            ]
-
-        else:
-            raise NotImplementedError
-
-    def sort_per_instance(self, out_targets, num_frames):
-        target_keys = self.target_keys + ["centroids"]
-        num_annots = out_targets["boxes"].shape[0]
-        idx = []
-        num_instances_per_frame = int(num_annots/num_frames)
-        frame_ids = np.arange(0, num_annots, num_instances_per_frame)
-        for i in range(num_instances_per_frame):
-            for frame_id in frame_ids:
-                idx.append(int(frame_id + i))
-
-        for key in target_keys:
-            out_targets[key] = out_targets[key][idx]
-
-        final_indices = []
-        for instance in range(num_instances_per_frame):
-            if not torch.any(out_targets["valid"][instance*num_frames:(instance+1)*num_frames]):
-                final_indices.append(torch.full((num_frames,), 0, dtype=torch.bool))
-            else:
-                final_indices.append(torch.full((num_frames,), 1, dtype=torch.bool))
-        final_indices = torch.cat(final_indices)
-        if not torch.all(final_indices):
-            for key in target_keys:
-                out_targets[key] = out_targets[key][final_indices]
-
-        return out_targets
-
-    def fill_box_non_valid_instances(self, targets, num_frames):
+    @staticmethod
+    def fill_box_non_valid_frames(targets, num_frames):
         num_annots = targets["boxes"].shape[0]
-        num_instances_per_frame = int(num_annots/num_frames)
+        num_instances_per_frame = num_annots // num_frames
         for instance in range(num_instances_per_frame):
             trajectory_boxes = targets["boxes"][instance * num_frames: (instance + 1) * num_frames]
-            valid_frames =  targets["valid"][instance * num_frames: (instance + 1) * num_frames]
+            valid_frames = targets["valid"][instance * num_frames: (instance + 1) * num_frames]
             if not torch.all(valid_frames):
                 new_instance_boxes = []
                 for idx, valid in enumerate(valid_frames):
@@ -587,29 +449,50 @@ class ClipTransformsApplier:
 
         return targets
 
-    def set_all_frames_valid(self, targets, num_frames):
+    @staticmethod
+    def set_all_classes_valid(targets, num_frames):
         num_annots = targets["boxes"].shape[0]
-        num_instances_per_frame = int(num_annots/num_frames)
-        all_valid = torch.ones(num_frames, dtype=torch.bool)
+        num_instances_per_frame = int(num_annots / num_frames)
+        # all_valid = torch.ones(num_frames, dtype=torch.bool)
         for instance in range(num_instances_per_frame):
-            targets["valid"][instance * num_frames: (instance + 1) * num_frames] = all_valid
+            # targets["valid"][instance * num_frames: (instance + 1) * num_frames] = all_valid
             trajectory_labels = targets["labels"][instance * num_frames: (instance + 1) * num_frames]
             label = trajectory_labels[trajectory_labels.nonzero()[0]].item()
             new_label = torch.full_like(trajectory_labels, label)
             targets["labels"][instance * num_frames: (instance + 1) * num_frames] = new_label
         return targets
 
-    def set_instance_level_classes(self,  targets, num_frames):
-        num_annots = targets["boxes"].shape[0]
-        num_instances_per_frame = int(num_annots/num_frames)
-        new_classes = []
-        for instance in range(num_instances_per_frame):
-            trajectory_labels = targets["labels"][instance * num_frames: (instance + 1) * num_frames]
-            label = trajectory_labels[trajectory_labels.nonzero()[0]].item()
-            new_classes.append(label)
-        targets["labels"] = torch.tensor(new_classes, dtype=torch.int64)
+    def sort_per_instance(self, out_targets, num_frames):
+        target_keys = self.target_keys + ["centroids"]
+        num_annots = out_targets["boxes"].shape[0]
+        idx = []
+        num_instances_per_frame = num_annots // num_frames
+        frame_ids = np.arange(0, num_annots, num_instances_per_frame)
+        for i in range(num_instances_per_frame):
+            for frame_id in frame_ids:
+                idx.append(int(frame_id + i))
+        for key in target_keys:
+            out_targets[key] = out_targets[key][idx]
+        return out_targets
 
-        return targets
+    # Remove instances without any valid frame
+    def remove_empty_instances(self, out_targets, num_frames):
+        target_keys = self.target_keys + ["centroids"]
+        num_annots = out_targets["boxes"].shape[0]
+        num_instances_per_frame = num_annots // num_frames
+        valid_indices = []
+
+        for instance in range(num_instances_per_frame):
+            if not torch.any(out_targets["valid"][instance * num_frames:(instance + 1) * num_frames]):
+                valid_indices.append(torch.full((num_frames,), 0, dtype=torch.bool))
+            else:
+                valid_indices.append(torch.full((num_frames,), 1, dtype=torch.bool))
+        valid_indices = torch.cat(valid_indices)
+        if not torch.all(valid_indices):
+            for key in target_keys:
+                out_targets[key] = out_targets[key][valid_indices]
+
+        return out_targets
 
     def __call__(self, images, targets):
         transforms_kwargs = {
@@ -618,6 +501,8 @@ class ClipTransformsApplier:
         for t in self.transforms:
             if hasattr(t, "init_clip_transform"):
                 transforms_kwargs.update(t.init_clip_transform(**transforms_kwargs))
+
+        # print(f"image_id {targets['image_id']} transforms_kwargs {transforms_kwargs}")
         num_frames = len(images)
         out_targets, out_images = [], []
 
@@ -633,19 +518,18 @@ class ClipTransformsApplier:
         targets_keys = self.target_keys + ["centroids"]
         out_images = torch.cat(out_images, dim=0)
         out_targets = {key: torch.cat([target[key] for target in out_targets], dim=0) for key in targets_keys}
+
+        # TODO clean this with something similar as init_clip_transform once original valid strategy is clear
+        # TODO: clean centroid and leave self.target keys as it was before
         out_targets = self.sort_per_instance(out_targets, num_frames)
-        out_targets["original_valid"] = torch.clone(out_targets["valid"])
-
-        if self.use_non_valid_class:
-            out_targets = self.fill_box_non_valid_instances(out_targets, num_frames)
-            out_targets = self.set_all_frames_valid(out_targets, num_frames)
-
-        if self.use_instance_level_classes:
-            out_targets = self.set_instance_level_classes(out_targets, num_frames)
-
+        out_targets = self.remove_empty_instances(out_targets, num_frames)
+        out_targets = self.fill_box_non_valid_frames(out_targets, num_frames)
+        # out_targets["original_valid"] = torch.clone(out_targets["valid"])
+        out_targets = self.set_all_classes_valid(out_targets, num_frames)
         out_targets["image_id"] = targets["image_id"]
         out_targets["iscrowd"] = targets["iscrowd"]
         out_targets["orig_size"] = targets["orig_size"]
         out_targets["size"] = torch.as_tensor(transforms_kwargs["size"])
+
 
         return out_images, out_targets
