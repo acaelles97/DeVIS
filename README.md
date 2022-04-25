@@ -56,7 +56,7 @@ OVIS
 ## Configuration 
 We have been inspired by [detectron2](https://github.com/facebookresearch/detectron2) in order to build our configuration system. 
 We hope this allows the research community to more easily build upon our method.
-Refer to `config.py` to get an overview of all the configuration options available including how the model is built, training and test options.
+Refer to `src/config.py` to get an overview of all the configuration options available including how the model is built, training and test options.
 
 ## Dataset preparation
 We expect the following organization for COCO, YT-19, YT-21 & OVIS training. 
