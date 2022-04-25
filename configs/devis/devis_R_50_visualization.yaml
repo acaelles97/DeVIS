@@ -1,0 +1,25 @@
+MODEL:
+  WEIGHTS: 'weights/r50_deformable_detr_segmentation.pth'
+  MASK_ON: True
+
+DATASETS:
+  TYPE: 'vis'
+  TRAIN_DATASET: 'yt_vis_train_19'
+  VAL_DATASET: 'yt_vis_val_19'
+
+INPUT:
+  MIN_SIZE_TEST: 360
+  MAX_SIZE_TEST: 640
+
+SOLVER:
+  BATCH_SIZE: 1
+
+TEST:
+  VIZ.OUT_VIZ_PATH: 'visual_results'
+  VIZ.SAVE_CLIP_VIZ: True
+
+  NUM_OUT: 10
+  CLIP_TRACKING:
+    MIN_FRAME_SCORE: 0.2
+    MIN_TRACK_SCORE: 0.3
+    MIN_DETECTIONS: 3

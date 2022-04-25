@@ -31,7 +31,7 @@ SOLVER:
 
 TEST:
   START_EVAL_EPOCH: 3
-  NUM_OUT: 10
+  NUM_OUT: 20
 
 
 

@@ -4,7 +4,6 @@ Modified from DETR (https://github.com/facebookresearch/detr)
 """
 import argparse
 import datetime
-import yaml
 import random
 from contextlib import redirect_stdout
 import time
@@ -14,23 +13,20 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, DistributedSampler
 
-import util.misc as utils
-from datasets import build_dataset
-from engine import evaluate_coco, inference_vis, train_one_epoch
-from models import build_model, build_tracker
-from util.weights_loading_utils import adapt_weights_devis
-from util.visdom_vis import build_visualizers, get_vis_win_names
-from config import get_cfg_defaults
+import src.util.misc as utils
+from src.datasets import build_dataset
+from src.engine import evaluate_coco, inference_vis, train_one_epoch
+from src.models import build_model, build_tracker
+from src.util.weights_loading_utils import shift_class_neurons, adapt_weights_devis, adapt_weights_mask_head
+from src.util.visdom_vis import build_visualizers, get_vis_win_names
+from src.config import get_cfg_defaults
 
 
 def get_args_parser():
     parser = argparse.ArgumentParser('DeVIS argument parser', add_help=False)
 
-    parser.add_argument('--config-file',  help="Run test only")
-
+    parser.add_argument('--config-file', help="Run test only")
     parser.add_argument('--eval-only', action='store_true', help="Run test only")
-
-    parser.add_argument('--seed', default=42, type=int)
 
     # distributed training parameters
     parser.add_argument('--world-size', default=1, type=int, help='number of distributed processes')
@@ -41,8 +37,7 @@ def get_args_parser():
         "opts",
         help="""
     Modify config options at the end of the command. For Yacs configs, use
-    space-separated "PATH.KEY VALUE" pairs.
-    For python-based LazyConfig, use "path.key=value".
+    space-separated "PATH.KEY VALUE" pairs".
             """.strip(),
         default=None,
         nargs=argparse.REMAINDER,
@@ -52,42 +47,47 @@ def get_args_parser():
 
 
 def sanity_check(cfg):
-    print("a")
-    assert isinstance(cfg.mask_aux_loss, list), "args.mask_aux_loss not a list"
-    assert len(cfg.mask_aux_loss) == len(set(cfg.mask_aux_loss)), f"Use unique levels number in args.mask_aux_loss, Value {cfg.mask_aux_loss}"
-    assert min(cfg.mask_aux_loss) >= 0 and max(cfg.mask_aux_loss) <= 4, f"Available aux_loss levels : [0, 1, 2, 3, 4], Value {cfg.mask_aux_loss}"
-    # AUX_LOSS_WEIGHTING_COEF and num_layers != 6
-    # if bbx refine no ref point refine.
-    # 'num_out': cfg.TEST.NUM_OUT != num_queries if not USE_TOP_K
-    # batch size 1 if dataset type vis
-    # calcular stride i >= 1
+    assert min(cfg.MODEL.LOSS.MASK_AUX_LOSS) >= 0 and max(cfg.MODEL.LOSS.MASK_AUX_LOSS) <= 4, f"Available MODEL.LOSS.MASK_AUX_LOSS levels : [0, 1, 2, 3, 4]"
 
+    if cfg.MODEL.LOSS.AUX_LOSS_WEIGHTING:
+        assert cfg.MODEL.TRANSFORMER.DECODER_LAYERS == 6, "MODEL.LOSS.AUX_LOSS_WEIGHTING  weights config available only for 6 layers"
 
-# def fix_seed(cfg):
-#     # fix the seed for reproducibility
-#     seed = cfg.SEED + utils.get_rank()
-#
-#     os.environ['PYTHONHASHSEED'] = str(seed)
-#     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:2'
-#     torch.manual_seed(seed)
-#     torch.cuda.manual_seed_all(seed)
-#     np.random.seed(seed)
-#     random.seed(seed)
-#     torch.cuda.manual_seed(seed)
-#     torch.backends.cudnn.deterministic = True
-#     torch.backends.cudnn.benchmark = False
+    if cfg.TEST.USE_TOP_K:
+        assert cfg.MODEL.LOSS.FOCAL_LOSS, "TopK can only be used with FOCAL_LOSS"
+    else:
+        if cfg.DATASETS.TYPE == 'vis':
+            assert cfg.TEST.NUM_OUT == (
+                        cfg.MODEL.NUM_QUERIES // cfg.MODEL.DEVIS.NUM_FRAMES), "TEST.NUM_OUT must be equal to number of queries per frame for VIS when not using TopK"
+        else:
+            assert cfg.TEST.NUM_OUT == cfg.MODEL.NUM_QUERIES, "TEST.NUM_OUT must be equal to number of queries when not using TopK"
+
+    if cfg.DATASETS.TYPE == 'vis':
+        assert cfg.MODEL.DEVIS.NUM_FRAMES > 1, "MODEL.DEVIS.NUM_FRAMES must be higher than 1"
+        assert not (cfg.MODEL.NUM_QUERIES % cfg.MODEL.DEVIS.NUM_FRAMES), "MODEL.NUM_QUERIES must be divisible by MODEL.DEVIS.NUM_FRAMES for VIS training"
+        if cfg.SOLVER.DEVIS.FINETUNE_QUERY_EMBEDDINGS:
+            assert not (300 % (
+                        cfg.MODEL.NUM_QUERIES // cfg.MODEL.DEVIS.NUM_FRAMES)), "Number of queries per frame must be divisible by 300 for SOLVER.DEVIS.FINETUNE_QUERY_EMBEDDINGS"
+
+        assert cfg.SOLVER.BATCH_SIZE == 1, "Batch size > 1 not implemented for VIS training"
+        assert cfg.TEST.CLIP_TRACKING.STRIDE < cfg.MODEL.DEVIS.NUM_FRAMES, "Clip tracking stride can not be higher than the clip size"
+
+    if cfg.TEST.INPUT_FOLDER:
+        assert len(cfg.TEST.EPOCHS_TO_EVAL) >= 1, "TEST.EPOCHS_TO_EVAL must contain at least 1 epoch number"
+
+    assert not (
+                cfg.MODEL.WITH_BBX_REFINE and cfg.MODEL.WITH_REF_POINT_REFINE), "MODEL.WITH_BBX_REFINE can not be activated together with cfg.MODEL.WITH_BBX_REFINE, select one of the two"
 
 
 def main(args, cfg):
+    sanity_check(cfg)
+
     utils.init_distributed_mode(args)
     # print("git:\n  {}\n".format(utils.get_sha()))
     device = torch.device(args.device)
 
     # fix the seed for reproducibility
-    # fix the seed for reproducibility
-    seed = args.seed + utils.get_rank()
+    seed = cfg.SEED + utils.get_rank()
 
-    print(f"seed {seed}")
     os.environ['PYTHONHASHSEED'] = str(seed)
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:2'
     torch.manual_seed(seed)
@@ -98,32 +98,11 @@ def main(args, cfg):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-    # def seed_worker(worker_id):
-    #     np.random.seed(np.random.get_state()[1][0] + worker_id)
-    #     # worker_seed = torch.initial_seed() % 2 ** 32
-    #     # print(f"worker_id {worker_id}")
-    #     # print(f"torch.initial_seed() {torch.initial_seed()}")
-    #     # np.random.seed(worker_seed)
-    #     # random.seed(worker_seed)
-    #     print(f"worker_seed {np.random.get_state()[1][0] + worker_id}")
-
-    def seed_worker(worker_id):
-        worker_seed = torch.initial_seed() % 2 ** 32
-        np.random.seed(worker_seed)
-        random.seed(worker_seed)
-        # print(f"worker seed {worker_seed}")
-
     g = torch.Generator()
-    g.manual_seed(0)
-
+    g.manual_seed(seed)
 
     train_dataset, num_classes = build_dataset(image_set="TRAIN", cfg=cfg)
     dataset_val, _ = build_dataset(image_set="VAL", cfg=cfg)
-
-
-    # print(f"Torch random {torch.randint(0, 300, size=(1, )).item()}")
-    # print(f"Torch random {torch.randint(0, 300, size=(1, )).item()}")
-    # print(f"Torch random {torch.randint(0, 300, size=(1, )).item()}")
     model, criterion, postprocessors = build_model(num_classes, device, cfg)
     model.to(device)
 
@@ -137,12 +116,74 @@ def main(args, cfg):
     if cfg.DATASETS.TYPE == 'vis':
         tracker = build_tracker(model, cfg)
 
-    n_train_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     n_total_params = sum(p.numel() for p in model.parameters())
     print(f'Total num params: {n_total_params}')
-    print(f'Number of training params: {n_train_params}')
 
+    if args.distributed:
+        sampler_train = DistributedSampler(train_dataset)
+        sampler_val = DistributedSampler(dataset_val, shuffle=False)
+
+    else:
+        sampler_train = torch.utils.data.RandomSampler(train_dataset)
+        sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+
+    batch_sampler_train = torch.utils.data.BatchSampler(
+        sampler_train, cfg.SOLVER.BATCH_SIZE, drop_last=True)
+
+    data_loader_train = DataLoader(train_dataset, batch_sampler=batch_sampler_train,
+                                   collate_fn=utils.collate_fn, num_workers=cfg.NUM_WORKERS, worker_init_fn=utils.seed_worker, generator=g)
+
+    data_loader_val = DataLoader(dataset_val, cfg.SOLVER.BATCH_SIZE, sampler=sampler_val, collate_fn=utils.val_collate if cfg.DATASETS.TYPE == 'vis' else utils.collate_fn,
+                                 num_workers=cfg.NUM_WORKERS)
+
+    output_dir = Path(cfg.OUTPUT_DIR)
+
+    if args.eval_only:
+        if cfg.DATASETS.TYPE == 'vis':
+            # Allow all checkpoints input_folder test
+            if cfg.TEST.INPUT_FOLDER:
+                for epoch_to_eval in cfg.TEST.EPOCHS_TO_EVAL:
+                    print(f"*********************** Starting validation epoch {epoch_to_eval} ***********************")
+                    checkpoint_path = os.path.join(cfg.TEST.INPUT_FOLDER, f"checkpoint_epoch_{epoch_to_eval}.pth")
+                    assert os.path.exists(checkpoint_path), f"Checkpoint path {checkpoint_path} DOESN'T EXIST"
+                    out_folder_name = f"val_epoch_{epoch_to_eval}"
+                    resume_state_dict = torch.load(checkpoint_path, map_location=device)['model']
+                    model_without_ddp.load_state_dict(resume_state_dict, strict=True)
+
+                    _ = inference_vis(
+                        tracker, data_loader_val, dataset_val, visualizers['val'], device, output_dir, out_folder_name, epoch_to_eval)
+
+            else:
+                out_folder_name = cfg.TEST.SAVE_PATH
+                resume_state_dict = torch.load(cfg.MODEL.WEIGHTS, map_location=device)['model']
+                model_without_ddp.load_state_dict(resume_state_dict, strict=True)
+
+                _ = inference_vis(
+                    tracker, data_loader_val, dataset_val, visualizers['val'], device, output_dir, out_folder_name, 0)
+
+        else:
+            checkpoint = torch.load(cfg.MODEL.WEIGHTS, map_location=device)['model']
+            if cfg.MODEL.SHIFT_CLASS_NEURON:
+                checkpoint = shift_class_neurons(checkpoint)
+
+            if cfg.MODEL.MASK_ON:
+                checkpoint = adapt_weights_mask_head(checkpoint, model_without_ddp.state_dict())
+
+            model_without_ddp.load_state_dict(checkpoint, strict=True)
+            _, coco_evaluator = evaluate_coco(
+                model, criterion, postprocessors, data_loader_val, device, output_dir, visualizers['val'], cfg.VISDOM_AND_LOG_INTERVAL, cfg.START_EPOCH)
+            if cfg.OUTPUT_DIR:
+                utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth")
+        return
+
+    if cfg.SOLVER.FROZEN_PARAMS:
+        for n, p in model_without_ddp.named_parameters():
+            if utils.match_name_keywords(n, cfg.SOLVER.FROZEN_PARAMS):
+                p.requires_grad_(False)
+
+    n_train_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     utils.print_training_params(model_without_ddp, cfg)
+    print(f'Number of training params: {n_train_params}')
 
     param_dicts = [
         {
@@ -183,24 +224,6 @@ def main(args, cfg):
     optimizer = torch.optim.AdamW(param_dicts, lr=cfg.SOLVER.BASE_LR, weight_decay=cfg.SOLVER.WEIGHT_DECAY)
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.SOLVER.STEPS)
 
-    if args.distributed:
-        sampler_train = DistributedSampler(train_dataset)
-        sampler_val = DistributedSampler(dataset_val, shuffle=False)
-
-    else:
-        sampler_train = torch.utils.data.RandomSampler(train_dataset)
-        sampler_val = torch.utils.data.SequentialSampler(dataset_val)
-
-    batch_sampler_train = torch.utils.data.BatchSampler(
-        sampler_train, cfg.SOLVER.BATCH_SIZE, drop_last=True)
-
-    data_loader_train = DataLoader(train_dataset, batch_sampler=batch_sampler_train,
-                                   collate_fn=utils.collate_fn, num_workers=cfg.NUM_WORKERS, worker_init_fn=seed_worker, generator=g)
-
-    data_loader_val = DataLoader(dataset_val, cfg.SOLVER.BATCH_SIZE, sampler=sampler_val, collate_fn=utils.val_collate, num_workers=cfg.NUM_WORKERS)
-
-    output_dir = Path(cfg.OUTPUT_DIR)
-
     best_val_stats = None
     if cfg.MODEL.WEIGHTS:
         if cfg.MODEL.WEIGHTS.startswith('https'):
@@ -208,40 +231,30 @@ def main(args, cfg):
                 cfg.MODEL.WEIGHTS, map_location='cpu', check_hash=True)
         else:
             checkpoint = torch.load(cfg.MODEL.WEIGHTS, map_location='cpu')
-
-        # resume_state_dict = {}
-        # checkpoint = torch.load("/usr/stud/cad/results/trainings/debug/out_to_check/weights_old.pth")
-        # for key, value in checkpoint.items():
-        #     if key == 'vistr.backbone.1.temporal_embd':
-        #         resume_state_dict['def_detr.backbone.1.temporal_embed'] = value
-        #     elif key.startswith("vistr"):
-        #         resume_state_dict[key.replace('vistr', 'def_detr')] = value
-        #     else:
-        #         resume_state_dict[key] = value
-
+        checkpoint_state_dict = checkpoint['model']
         model_state_dict = model_without_ddp.state_dict()
-        if cfg.DATASETS.TYPE == 'vis':
-            if args.eval_only:
-                resume_state_dict = {}
-                for key, value in checkpoint['model'].items():
-                    if key == 'vistr.backbone.1.temporal_embd':
-                        resume_state_dict['def_detr.backbone.1.temporal_embed'] = value
-                    elif key.startswith("vistr"):
-                        resume_state_dict[key.replace('vistr', 'def_detr')] = value
-                    else:
-                        resume_state_dict[key] = value
 
-            else:
-                resume_state_dict = adapt_weights_devis(checkpoint, model_state_dict, cfg.MODEL.NUM_FEATURE_LEVELS, cfg.MODEL.LOSS.FOCAL_LOSS,
+        if cfg.DATASETS.TYPE == 'vis':
+            checkpoint_state_dict = adapt_weights_devis(checkpoint_state_dict, model_state_dict, cfg.MODEL.NUM_FEATURE_LEVELS, cfg.MODEL.LOSS.FOCAL_LOSS,
                                                         cfg.SOLVER.DEVIS.FINETUNE_CLASS_LOGITS, cfg.MODEL.DEVIS.NUM_FRAMES, cfg.SOLVER.DEVIS.FINETUNE_QUERY_EMBEDDINGS,
-                                                        cfg.MODEL.DEVIS.INSTANCE_LEVEL_QUERIES, cfg.SOLVER.DEVIS.FINETUNE_TEMPORAL_MODULES,
-                                                        cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_CONNECT_ALL_FRAMES,
+                                                        cfg.SOLVER.DEVIS.FINETUNE_TEMPORAL_MODULES, cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_CONNECT_ALL_FRAMES,
                                                         cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_TEMPORAL_WINDOW, cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_N_POINTS_TEMPORAL_FRAME,
                                                         cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.DEC_N_POINTS_TEMPORAL_FRAME)
 
+        else:
+            if cfg.MODEL.SHIFT_CLASS_NEURON:
+                checkpoint_state_dict = shift_class_neurons(checkpoint_state_dict)
 
+            if cfg.MODEL.MASK_ON:
+                checkpoint_state_dict = adapt_weights_mask_head(checkpoint_state_dict, model_state_dict)
 
-        model_without_ddp.load_state_dict(resume_state_dict, strict=True)
+        missing_keys, unexpected_keys = model_without_ddp.load_state_dict(checkpoint_state_dict, strict=False)
+
+        if len(missing_keys) > 0:
+            print('Missing Keys: {}'.format(missing_keys))
+
+        if len(unexpected_keys) > 0:
+            print('Unexpected Keys: {}'.format(unexpected_keys))
 
         # RESUME OPTIM
         if not args.eval_only and cfg.SOLVER.RESUME_OPTIMIZER:
@@ -260,18 +273,6 @@ def main(args, cfg):
             for k, v in visualizers.items():
                 for k_inner in v.keys():
                     visualizers[k][k_inner].win = checkpoint['vis_win_names'][k][k_inner]
-
-    if args.eval_only:
-        if cfg.DATASETS.TYPE == 'vis':
-            _ = inference_vis(
-                tracker, data_loader_val, dataset_val, visualizers['val'], device, output_dir, cfg.TEST.SAVE_PATH, 0)
-
-        else:
-            _, coco_evaluator = evaluate_coco(
-                model, criterion, postprocessors, data_loader_val, device, output_dir, visualizers['val'], cfg.VISDOM_AND_LOG_INTERVAL, cfg.START_EPOCH)
-            if args.OUTPUT_DIR:
-                utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth")
-        return
 
     print("Start training")
     start_time = time.time()
