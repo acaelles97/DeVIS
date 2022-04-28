@@ -11,6 +11,9 @@ MODEL:
     CLASS_COST: 1.0
     USE_SUM_L1_DISTANCE: False
 
+  LOSS:
+    MASK_AUX_LOSS: [ ]
+
 DATASETS:
   TYPE: 'vis'
   TRAIN_DATASET: 'yt_vis_train_19'

@@ -16,14 +16,15 @@ torchrun --nproc_per_node=4 main.py --config-file configs/devis/devis_R_50.yaml 
 As shown above, user can override config-file parameters by passing the new KEY VALUE pair.    
 
 
-| Method                        | Clip size | Features scales | AP  | Training<br/> GPU hours | Max GPU <br/>memory   | URL                                                                   |
-|-------------------------------|-----------|-----------------|-----|-------------------------|-----------------------|-----------------------------------------------------------------------|
-| Deformable VisTR              | 36        | 1               | 1   | 33.0                    | 300                   | [config](configs/devis/devis_ablation0_deformable_vistr.yaml)<br/>log |
-| DeVIS                         | 6         | 1               |     |                         |                       | config<br/>log                                                        |
-| +increase spatial inputs      | 6         | 4               |     |                         |                       | config<br/>log                                                        |
-| +instance aware obj. queries  | 6         | 4               |     |                         |                       | config<br/>log                                                        |
-| +multi-scale mask head        | 6         | 4               |     |                         |                       | config<br/>log                                                        |
-| +multi-cue clip tracking      | 6         | 4               |     |                         |                       | config<br/>log                                                        |
-| +aux. loss weighting          | 6         | 4               |     |                         |                       | config<br/>log                                                        |
+| Method                        | Clip size | K_temp | Features scales | AP   | Training<br/> GPU hours | Max GPU <br/>memory | URL                                                                                                                                 |
+|-------------------------------|-----------|--------|-----------------|------|-------------------------|---------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| Deformable VisTR              | 36        | 4      | 1               | 33.0 | 400                     | 300                 | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/devis_ablation0_deformable_vistr.yaml) <br/>log              |
+| Deformable VisTR              | 36        | 0      | 1               | 33.0 | 400                     | 300                 | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/devis_ablation1_deformable_vistr_wo_temp_conn.yaml) <br/>log |
+| DeVIS                         | 6         | 4      | 4               |      |                         |                     | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/devis_ablation2_single-scale.yaml) <br/>log                  |
+| +increase spatial inputs      | 6         | 4      | 4               |      |                         |                     | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/devis_ablation3_increased-spatial-inputs.yaml) <br/>log      |
+| +instance aware obj. queries  | 6         | 4      | 4               |      |                         |                     | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/devis_ablation4_instance-aware.yaml) <br/>log                |
+| +multi-scale mask head        | 6         | 4      | 4               |      |                         |                     | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/devis_ablation5_multi-scale_mask-head.yaml) <br/>log         |
+| +multi-cue clip tracking      | 6         | 4      | 4               |      |                         |                     | [config]()                                                                                                                          |
+| +aux. loss weighting          | 6         | 4      | 4               |      |                         |                     | [config]()                                                                                                                          |
 
 # Validation during training

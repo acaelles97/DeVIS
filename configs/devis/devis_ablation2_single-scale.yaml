@@ -16,6 +16,9 @@ MODEL:
     DEFORMABLE_ATTENTION:
       INSTANCE_AWARE_ATTENTION: False
 
+  LOSS:
+    MASK_AUX_LOSS: [ ]
+
 DATASETS:
   TYPE: 'vis'
   TRAIN_DATASET: 'yt_vis_train_19'
