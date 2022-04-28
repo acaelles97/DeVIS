@@ -10,8 +10,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon, Circle
 from matplotlib.collections import PatchCollection
 import torch.nn.functional as F
-
-from util import box_ops
+from . import box_ops
 
 def imshow_det_masks_for_tracks(img, instance, cmap,
                       class_names=None,

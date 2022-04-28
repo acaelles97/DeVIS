@@ -22,14 +22,16 @@ _C.MODEL.HIDDEN_DIM = 256
 _C.MODEL.DIM_FEEDFORWARD = 1024
 # Dropout applied in the transformer
 _C.MODEL.DROPOUT = 0.1
-# Number of feature level resolutions. The resolutions used for each number is the following: [/64, /32,  /16, /8] for 4 levels,  [/32,  /16, /8] for 3 levels,  [/16,
+# Number of feature level resolutions. The resolutions used for each number is the following:
+# [/64, /32,  /16, /8] for 4 levels,  [/32,  /16, /8] for 3 levels,  [/16,
 # /8] for 2 levels and [/32] with a single level. The latter allows replicating DETR resolution with deformable attention.
 _C.MODEL.NUM_FEATURE_LEVELS = 4
 # Enable bounding box refine at each decoder layer
 _C.MODEL.WITH_BBX_REFINE = True
 # Allows gradient propagation of the bounding box prediction of each decoder layer, only used when WITH_BBX_REFINE=True
 _C.MODEL.BBX_GRADIENT_PROP = False
-# Allows using reference point refine, which works similar as bbx refine but predicts only x,y offset position at each decoder layer, instead of predicting a bounding box offsets
+# Allows using reference point refine, which works similar as bbx refine but predicts only x,y
+# offset position at each decoder layer, instead of predicting a bounding box offsets
 # If active, then WITH_BBX_REFINE must be set to False
 _C.MODEL.WITH_REF_POINT_REFINE = False
 # Activates mask head on top of deformable detr
@@ -45,7 +47,8 @@ _C.MODEL.TRANSFORMER.ENCODER_LAYERS = 6
 _C.MODEL.TRANSFORMER.DECODER_LAYERS = 6
 # Number of attention heads inside the transformer's attentions
 _C.MODEL.TRANSFORMER.N_HEADS = 8
-# Number of attention points per head and per resolution used for encoder/decoder deformable attention. This corresponds to current frame points for DeVIS
+# Number of attention points per head and per resolution used for encoder/decoder deformable
+# attention. This corresponds to current frame points for DeVIS
 _C.MODEL.TRANSFORMER.ENC_N_POINTS = 4
 _C.MODEL.TRANSFORMER.DEC_N_POINTS = 4
 
@@ -58,7 +61,8 @@ _C.MODEL.MASK_HEAD = CN()
 _C.MODEL.MASK_HEAD.USE_MDC = True
 # Upsampling resolution on the mask head for which multi-head attention is computed
 _C.MODEL.MASK_HEAD.UPSAMPLING_RESOLUTIONS = ['/32', '/16', '/8']
-# Used features in each of the upsampling step of the mask head. NUM_FEATURE_LEVELS needs also to be set up accordingly . Available feats for each resolution:
+# Used features in each of the upsampling step of the mask head. NUM_FEATURE_LEVELS needs also to
+# be set up accordingly . Available feats for each resolution:
 # /64 : [encoded, compressed_backbone]
 # /32: [encoded, compressed_backbone, backbone]
 # /16: [encoded, compressed_backbone, backbone]
@@ -76,7 +80,8 @@ _C.MODEL.MASK_HEAD.USED_FEATURES = [['/32', 'encoded'], ['/16', 'encoded'], ['/8
 _C.MODEL.DEVIS = CN()
 # Number of frames used, this value is fixed for both train and test
 _C.MODEL.DEVIS.NUM_FRAMES = 6
-# Type of temporal positional embedding to use on top of x,y sine positional encoding.  Available options are: 'sine' 'learned'
+# Type of temporal positional embedding to use on top of x,y sine positional encoding.  Available
+# options are: 'sine' 'learned'
 _C.MODEL.DEVIS.TEMPORAL_EMBEDDING = 'learned'
 
 # ---------------------------------------------------------------------------- #
@@ -84,13 +89,19 @@ _C.MODEL.DEVIS.TEMPORAL_EMBEDDING = 'learned'
 # ---------------------------------------------------------------------------- #
 # TODO: Allow to construct decoder attention mechanism module by module
 _C.MODEL.DEVIS.DEFORMABLE_ATTENTION = CN()
+# Deactivates temporal connections, so deformable attention run per-frame independently.
+# For ablation purposes only.
+_C.MODEL.DEVIS.DEFORMABLE_ATTENTION.DISABLE_TEMPORAL_CONNECTIONS = False
 # Allows activating the temporal deformable attention connections in all input frames, same as decoder
 _C.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_CONNECT_ALL_FRAMES = True
-# Allows to select the window [T-W/2, T+W/2] that each frame T can sample from in the encoder. If ENC_CONNECT_ALL_FRAMES=True this value is ignored
+# Allows to select the window [T-W/2, T+W/2] that each frame T can sample from in the encoder. If
+# ENC_CONNECT_ALL_FRAMES=True this value is ignored
 _C.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_TEMPORAL_WINDOW = 4
-# Activates instance aware attention on the decoder, enabling to sample from same instance position on other frames and use same instance bbx in order to modulate sampling offsets
+# Activates instance aware attention on the decoder, enabling to sample from same instance
+# position on other frames and use same instance bbx in order to modulate sampling offsets
 _C.MODEL.DEVIS.DEFORMABLE_ATTENTION.INSTANCE_AWARE_ATTENTION = True
-# Number of points from the encoder/decoder's temporal deformable attention for each attention head, each resolution and each frame.
+# Number of points from the encoder/decoder's temporal deformable attention for each attention
+# head, each resolution and each frame.
 _C.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_N_POINTS_TEMPORAL_FRAME = 4
 _C.MODEL.DEVIS.DEFORMABLE_ATTENTION.DEC_N_POINTS_TEMPORAL_FRAME = 4
 
@@ -101,12 +112,15 @@ _C.MODEL.DEVIS.DEFORMABLE_ATTENTION.DEC_N_POINTS_TEMPORAL_FRAME = 4
 _C.MODEL.LOSS = CN()
 # Activates auxiliary loss
 _C.MODEL.LOSS.AUX_LOSS = True
-# Activates auxiliary loss weighting strategy, which follows : Layer 1: 1/30, Layer 2: 2/30,  Layer 3: 3/30,  Layer 4: 4/30   Layer 5: 5/30  Layer 6: 15/30.
-# These coefficients are NOT applied to MASK_AUX_LOSS if activated
+# Activates auxiliary loss weighting strategy, which follows : Layer 1: 1/30, Layer 2: 2/30,
+# Layer 3: 3/30,  Layer 4: 4/30   Layer 5: 5/30  Layer 6: 15/30. These coefficients are NOT
+# applied to MASK_AUX_LOSS if activated
 _C.MODEL.LOSS.AUX_LOSS_WEIGHTING = False
-# Activates focal loss as originally used by Deformable DeTR. If False Softmax loss is used, same as in DETR / VisTR
+# Activates focal loss as originally used by Deformable DeTR. If False Softmax loss is used,
+# same as in DETR / VisTR
 _C.MODEL.LOSS.FOCAL_LOSS = True
-# Activate mask auxiliary loss at the output of the desired layer. If list is empty mask aux loss is not computed
+# Activate mask auxiliary loss at the output of the desired layer. If list is empty mask aux loss
+# is not computed
 _C.MODEL.LOSS.MASK_AUX_LOSS = [2, ]
 # Sigmoid focal loss mask coefficient
 _C.MODEL.LOSS.SEGM_MASK_COEF = 1.0
@@ -159,12 +173,15 @@ _C.INPUT.MIN_SIZE_TEST = 800
 _C.INPUT.MAX_SIZE_TEST = 1333
 
 _C.INPUT.DEVIS = CN()
-# Activates multi-scale input training for DeVIS (always true for Deformable DeTr).
-# Otherwise, we use the transformation pipeline as VisTr, which crops always the image and resizes it to a fixed final shape.
+# Activates multi-scale input training for DeVIS (always true for Deformable DeTr). Otherwise,
+# we use the transformation pipeline as VisTr, which crops always the image and resizes it to a
+# fixed final shape.
 _C.INPUT.DEVIS.MULTI_SCALE_TRAIN = True
-# Allows sampling each frame of each video in the dataset as starting clip_length sub-clip. If False we only until the VIDEO_SIZE- DEVIS.NUM_FRAMES th frame.
+# Allows sampling each frame of each video in the dataset as starting clip_length sub-clip. If
+# False we only until the VIDEO_SIZE- DEVIS.NUM_FRAMES th frame.
 _C.INPUT.DEVIS.SAMPLE_EACH_FRAME = False
-# Allows re-computing the bounding box coordinates using the resulting mask after all the training data transformations
+# Allows re-computing the bounding box coordinates using the resulting mask after all the
+# training data transformations
 _C.INPUT.DEVIS.CREATE_BBX_FROM_MASK = True
 
 
@@ -181,7 +198,8 @@ _C.SOLVER.FROZEN_PARAMS = []
 _C.SOLVER.BACKBONE_NAMES = ['backbone.0']
 _C.SOLVER.LR_BACKBONE = 0.00002
 
-# Lr from deformable attention temporal linear layer, which applies to CURRENT_FRAME for VIS training
+# Lr from deformable attention temporal linear layer, which applies to CURRENT_FRAME for VIS
+# training
 _C.SOLVER.LR_LINEAR_PROJ_NAMES = ['self_attn.sampling_offsets', 'cross_attn.sampling_offsets', 'reference_points']
 _C.SOLVER.LR_LINEAR_PROJ_MULT = 0.1
 
@@ -193,7 +211,7 @@ _C.SOLVER.LR_MASK_HEAD_MULT = 1
 _C.SOLVER.DEVIS = CN()
 _C.SOLVER.DEVIS.LR_TEMPORAL_LINEAR_PROJ_NAMES = ['temporal_sampling_offsets', ]
 _C.SOLVER.DEVIS.LR_TEMPORAL_LINEAR_PROJ_MULT = 0.1
-_C.SOLVER.DEVIS.FINETUNE_QUERY_EMBEDDINGS = True
+_C.SOLVER.DEVIS.FINETUNE_QUERY_EMBEDDINGS = False
 _C.SOLVER.DEVIS.FINETUNE_TEMPORAL_MODULES = True
 _C.SOLVER.DEVIS.FINETUNE_CLASS_LOGITS = False
 
@@ -221,34 +239,6 @@ _C.SOLVER.RESUME_OPTIMIZER = False
 _C.SOLVER.CHECKPOINT_INTERVAL = 1
 # Gradient clipping max norm
 _C.SOLVER.GRAD_CLIP_MAX_NORM = 0.1
-# # Specific parameters learning rates for the VIS training
-# _C.SOLVER.VIS_SCHEDULE = CN()
-# # New modules excluding deformable attention linear layers that are introduced in the VIS model and can be trained with a higher lr factor
-# _C.SOLVER.VIS_SCHEDULE.NAMES_NEW_MODULES = ['temporal_attention_weights', 'temporal_embd', 'class_embed']
-# _C.SOLVER.VIS_SCHEDULE.LR_FACTOR_NEW_MODULES = 1.0
-#
-# # Deformable attention linear layers from current frame, which are originally trained with lower lr
-# _C.SOLVER.VIS_SCHEDULE.NAMES_LINEAR_PROJ_CURRENT = ['self_attn.sampling_offsets', 'cross_attn.sampling_offsets', 'reference_points']
-# _C.SOLVER.VIS_SCHEDULE.LR_FACTOR_LINEAR_PROJ_CURRENT = 0.1
-#
-# # Newly introduced deformable attention linear layers from temporal frames, which are similarly trained with lower lr
-# _C.SOLVER.VIS_SCHEDULE.NAMES_LINEAR_PROJ_CURRENT = ['temporal_sampling_offsets', ]
-# _C.SOLVER.VIS_SCHEDULE.LR_FACTOR_LINEAR_PROJ_TEMPORAL = 0.1
-#
-# # Specific parameters learning rates for the Instance Segmentation training. We have separated encoder from decoder in order to allow a more customizable schedule. \
-# # Most of the benefit comes from un-freezing the decoder
-# _C.SOLVER.INST_SEGM_SCHEDULE = CN()
-# # Allows freezing deformable detr. Parameters listed on the following sections are then unfrozen and trained with the corresponding lr (BASE_LR * FACTOR)
-# _C.SOLVER.INST_SEGM_SCHEDULE.FREEZE_DEF_DETR = True
-# # Deformable attention linear layers which are trained with lower lr
-# _C.SOLVER.INST_SEGM_SCHEDULE.NAMES_LINEAR_PROJ = ['reference_points', 'sampling_offsets']
-# _C.SOLVER.INST_SEGM_SCHEDULE.LR_FACTOR_LINEAR_PROJ = 0.1
-#
-# # Deformable detr encoder and decoder names to unfreeze, with its corresponding learning rate (BASE_LR * FACTOR)
-# _C.SOLVER.INST_SEGM_SCHEDULE.NAMES_ENCODER = ['transformer.encoder', 'input_proj', 'level_embed']
-# _C.SOLVER.INST_SEGM_SCHEDULE.LR_FACTOR_ENCODER = 0.1
-# _C.SOLVER.INST_SEGM_SCHEDULE.NAMES_DECODER = ['transformer.decoder', 'query_embed.weight']
-# _C.SOLVER.INST_SEGM_SCHEDULE.LR_FACTOR_DECODER = 0.1
 
 # ---------------------------------------------------------------------------- #
 # Test option used for both eval during training and test

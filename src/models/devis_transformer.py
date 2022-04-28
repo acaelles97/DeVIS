@@ -18,7 +18,8 @@ class DeVISTransformer(DeformableTransformer):
                  num_feature_levels=4, enc_connect_all_embeddings=True, enc_temporal_window=2, enc_n_curr_points=4, enc_n_temporal_points=2,
                  dec_n_curr_points=4, dec_n_temporal_points=2, dec_instance_aware_att=True, with_gradient=False):
 
-        super().__init__(d_model=d_model, nhead=nhead, num_feature_levels=num_feature_levels, with_gradient=with_gradient)
+        super().__init__(d_model=d_model, nhead=nhead, num_feature_levels=num_feature_levels,
+                         with_gradient=with_gradient)
 
         if enc_connect_all_embeddings:
             enc_temporal_window = num_frames - 1

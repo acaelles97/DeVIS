@@ -259,8 +259,9 @@ class TemporalMSDeformAttnDecoder(TemporalMSDeformAttnBase):
         T_, Len_q, _ = query.shape
         T_, Len_in, _ = input_flatten.shape
 
-        value, curr_frame_sampling_offsets, temporal_sampling_offsets, attention_weights_curr, attention_weights_temporal = super()._compute_deformable_attention(query,
-                                                                                                                                                                input_flatten)
+        value, curr_frame_sampling_offsets, temporal_sampling_offsets, attention_weights_curr, \
+            attention_weights_temporal = super()._compute_deformable_attention(query, input_flatten)
+
         # To add hook for att maps visualization
         current_sampling_locations_for_att_maps, temporal_sampling_locations_for_att_maps = [], []
         if reference_points.shape[-1] == 2:
@@ -273,7 +274,9 @@ class TemporalMSDeformAttnDecoder(TemporalMSDeformAttnBase):
                                      + curr_frame_sampling_offsets[t][None] / offset_normalizer[None, None, None, :, None, :]
 
                 output_curr = MSDeformAttnFunction.apply(
-                    current_frame_values, input_current_spatial_shapes, input_current_level_start_index, sampling_locations, attention_weights_curr[t][None], self.im2col_step)
+                    current_frame_values, input_current_spatial_shapes, input_current_level_start_index,
+                    sampling_locations, attention_weights_curr[t][None], self.im2col_step
+                )
 
                 temporal_frames = temporal_offsets[t] + t
                 temporal_frames_values = value[temporal_frames].flatten(0, 1)[None]
@@ -301,7 +304,10 @@ class TemporalMSDeformAttnDecoder(TemporalMSDeformAttnBase):
 
                 current_sampling_locations_for_att_maps.append(sampling_locations)
                 output_curr = MSDeformAttnFunction.apply(
-                    current_frame_values, input_current_spatial_shapes, input_current_level_start_index, sampling_locations, attention_weights_curr[t][None], self.im2col_step)
+                    current_frame_values, input_current_spatial_shapes,
+                    input_current_level_start_index, sampling_locations,
+                    attention_weights_curr[t][None], self.im2col_step
+                )
 
                 temporal_frames = temporal_offsets[t] + t
                 temporal_frames_values = value[temporal_frames].flatten(0, 1)[None]
@@ -316,8 +322,10 @@ class TemporalMSDeformAttnDecoder(TemporalMSDeformAttnBase):
 
                 temporal_sampling_locations_for_att_maps.append(temporal_sampling_locations)
                 output_temporal = MSDeformAttnFunction.apply(
-                    temporal_frames_values, input_temporal_spatial_shapes, input_temporal_level_start_index, temporal_sampling_locations,
-                    attention_weights_temporal[t][None], self.im2col_step)
+                    temporal_frames_values, input_temporal_spatial_shapes,
+                    input_temporal_level_start_index, temporal_sampling_locations,
+                    attention_weights_temporal[t][None], self.im2col_step
+                )
 
                 frame_output = output_curr + output_temporal
                 output.append(frame_output)

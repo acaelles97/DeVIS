@@ -24,7 +24,8 @@ from src.models import Tracker
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: DataLoader, optimizer: torch.optim.Optimizer,
-                    device: torch.device, epoch: int, visualizers: dict, vis_and_log_interval: int, clip_max_norm: float):
+                    device: torch.device, epoch: int, visualizers: dict, vis_and_log_interval: int,
+                    clip_max_norm: float):
     vis_iter_metrics = None
     if visualizers:
         vis_iter_metrics = visualizers['iter_metrics']
@@ -89,14 +90,15 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                              )
 
     # gather the stats from all processes
-    metric_logger.synchronize_between_processes()
+    metric_logger.synchronize_between_processes(device=device)
     print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 
 @torch.no_grad()
-def evaluate_coco(model: torch.nn.Module, criterion: torch.nn.Module, postprocessors, data_loader: DataLoader, device, output_dir: Path, visualizers: dict, vis_log_interval: int,
-                  epoch: int = None):
+def evaluate_coco(model: torch.nn.Module, criterion: torch.nn.Module, postprocessors,
+                  data_loader: DataLoader, device, output_dir: Path, visualizers: dict,
+                  vis_log_interval: int, epoch: int = None):
     model.eval()
     criterion.eval()
     metric_logger = utils.MetricLogger(

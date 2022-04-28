@@ -1,5 +1,6 @@
 MODEL:
   WEIGHTS: 'weights/r50_deformable_detr_plus_iterative_bbox_refinement-checkpoint.pth'
+  SHIFT_CLASS_NEURON: True
   MASK_ON: True
   LOSS:
     SEGM_MASK_COEF: 8.0

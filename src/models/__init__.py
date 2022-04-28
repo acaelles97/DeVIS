@@ -4,6 +4,7 @@ from .backbone import build_backbone
 from .matcher import build_matcher, build_inference_matcher
 from .criterion import build_criterion
 from .deformable_transformer import build_deformable_transformer
+from .devis_ablation_transformer_wo_t_conn import build_devis_ablation_transformer
 from .devis_transformer import build_devis_transformer
 from .deformable_detr import DeformableDETR, DefDETRPostProcessor
 from .deformable_segmentation import DeformableDETRSegm, DefDETRSegmPostProcess
@@ -43,7 +44,10 @@ def build_model(num_classes, device, cfg):
     }
 
     if cfg.DATASETS.TYPE == 'vis':
-        transformer = build_devis_transformer(cfg)
+        if cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.DISABLE_TEMPORAL_CONNECTIONS:
+            transformer = build_devis_ablation_transformer(cfg)
+        else:
+            transformer = build_devis_transformer(cfg)
         deformable_detr_kwargs['transformer'] = transformer
         def_detr = DeformableDETR(**deformable_detr_kwargs)
 

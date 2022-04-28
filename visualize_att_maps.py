@@ -187,6 +187,8 @@ class TrackerAttMaps(Tracker):
             visualize_clips_with_att_maps(idx, video.images_folder, video.video_clips[idx][:clip_length], clips_to_show, self.att_maps_cfg.layer_used,
                                           self.att_maps_cfg.used_resolution, out_path=self.visualization_cfg.out_viz_path, class_name=cat_names)
 
+        for hook in hooks:
+            hook.remove()
 
 @torch.no_grad()
 def run_demo(args, cfg):

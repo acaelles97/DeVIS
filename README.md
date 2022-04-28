@@ -19,103 +19,52 @@ We further introduce a new image and video instance mask head which exploits mul
 DeVIS benefits from comparatively small memory as well as training time requirements, and achieves state-of-the-art results on the YouTube-VIS 2019 and 2021, as well as the challenging OVIS dataset.
 
 
-#Model zoo
-Deformable Mask Head
+#Results
+##COCO
 
-| Model | AP    | AP50 | AP75 | AR1 | AR10 | Pretrain |
-|-------|-------|------|------|-----|------|----------|
-| dadad | dada  |      |      |     |      |          |
+| Model                                                        | AP   | AP50 | AP75 | AR1 | AR10 | FPS  |
+|--------------------------------------------------------------|------|------|------|-----|------|------|
+| [Mask R-CNN](https://github.com/facebookresearch/detectron2) | 37.2 | 58.5 | 39.8 |     |      | 21.4 |
+| Ours                                                         | 38.0 | 61.4 | 40.1 |     |      | 12.1 |
 
-YT-19 
+##YT-19 
 
-YT-21
+| Model                                             | AP   | AP50 | AP75 | AR1  | AR10 | Pretrain |
+|---------------------------------------------------|------|------|------|------|------|----------|
+| [VisTR](https://github.com/Epiphqny/VisTR)        |      |      |      |      |      |          |
+| [IFC](https://github.com/sukjunhwang/IFC)         |      |      |      |      |      |          |
+| [SeqFormer](https://github.com/wjf5203/SeqFormer) |      |      |      |      |      |          |
+| Ours                                              | 44.4 | 67.9 | 48.6 | 42.4 | 51.6 |          |
 
-OVIS
+##YT-21
 
-#Usage
+| Model                                             | AP   | AP50 | AP75 | AR1  | AR10 | Pretrain |
+|---------------------------------------------------|------|------|------|------|------|----------|
+| [IFC](https://github.com/sukjunhwang/IFC)         | 35.2 | 57.2 | 37.5 | -    | -    |          |
+| [SeqFormer](https://github.com/wjf5203/SeqFormer) | 40.5 | 62.4 | 43.7 | 36.1 | 48.1 |          |
+| Ours                                              | 41.9 | 64.8 | 46.0 | 37.3 | 48.5 |          |
 
-## Features from this repo
-* Multi-GPU test
-* Evaluation during training
-* Training and val curves visualization using visdom
-* Visualize results and attention maps! (*Only available for DeVIS*)
 
-## Installation
+##OVIS
 
-1. Clone and enter this repository:
-    ```
-    git clone git@github.com:acaelles97/DeVIS.git
-    cd DeVIS
-    ```
-2. Install packages for Python 3.8:
-   1. Install PyTorch 1.11.0 and torchvision 0.12.0 from [here](https://pytorch.org/get-started/locally/).  
-   2. `pip3 install -r requirements.txt`
-   3. Install [youtube-vis](https://github.com/youtubevos/cocoapi) api
-   4. Install MultiScaleDeformableAttention package: `python src/models/ops/setup.py build_ext install`
+| Model | AP   | AP50 | AP75 | AR1 | AR10 | Pretrain |
+|-------|------|------|------|-----|------|----------|
+| Ours  | 23.2 | 44.0 | 21.7 |     |      |          |
+
 
 ## Configuration 
 We have been inspired by [detectron2](https://github.com/facebookresearch/detectron2) in order to build our configuration system. 
-We hope this allows the research community to more easily build upon our method.
+We hope this allows the research community to more easily build upon our method. 
 Refer to `src/config.py` to get an overview of all the configuration options available including how the model is built, training and test options.
 
-## Dataset preparation
-We expect the following organization for COCO, YT-19, YT-21 & OVIS training. 
-User must set cfg.DATASETS.DATA_PATH to the root data path. 
-We refer to `src/datasets/coco.py` & `src/datasets/vis.py` to modify the expected format for COCO dataset and VIS datasets respectively.
-
-```
-cfg.DATASETS.DATA_PATH/
-└── COCO/
-  ├── train2017/
-  ├── val2017/
-  └── annotations/
-      ├── instances_train2017.json
-      └── instances_val2017.json
- 
-└── Youtube_VIS/
-  ├── train/
-      ├── JPEGImages
-      └── train.json 
-  └── valid/
-      ├── JPEGImages
-      └── valid.json 
-
-└── Youtube_VIS-2021/
-  ├── train/
-      ├── JPEGImages
-      └── instances.json 
-  └── valid/
-      ├── JPEGImages
-      └── instances.json
-
-└── OVIS/
-  ├── train/
-  ├── annotations_train.json/
-  ├── valid/     
-  └── annotations_valid.json/
-
-```
-
-## Visdom
-Monitoring of the training/evaluation progress is possible via command line as well as [Visdom](https://github.com/fossasia/visdom). 
-For the latter, a Visdom server must be running at `VISDOM_PORT=8090` and `VISDOM_SERVER=http://localhost`. 
-To deactivate Visdom logging set `VISDOM_ON=False`.
-
-## Train
-We provide configurations files to train Deformable DeTR `configs/deformable_detr/deformable_detr_R_50.yaml`, Deformable Mask-Head `configs/deformable_detr/deformable_mask_head_R_50.yaml` and DeVIS `configs/devis/devis_R_50.yaml`.
-For instance, the command to train DeVIS on YT-21 with 4GPUs is as following:
-```
-torchrun --nproc_per_node=4 main.py --config-file configs/devis/devis_R_50.yaml DATASETS.TRAIN_DATASET yt_vis_train_21 DATASETS.VAL_DATASET yt_vis_val_21
-```
-As shown above, user can override config-file parameters by passing the new KEY VALUE pair.    
-
-
+# Train
+We refer to our [docs/TRAIN.md](docs/TRAIN.md) for detailed training instructions.
 
 ## Evaluate
-To evaluate model's performance, you just need to add the --eval-only argument and set MODEL.WEIGHTS to the checkpoint path.
-For example, the following command shows 
+To evaluate model's performance, you just need to add the --eval-only argument and set MODEL.WEIGHTS to the checkpoint path via command line.
+For example, the following command shows how to validate
 ```
-torchrun --nproc_per_node=4 main.py --config-file configs/devis/devis_R_50.yaml --eval-only DATASETS.VAL_DATASET yt_vis_val_21
+torchrun --nproc_per_node=1 main.py --config-file configs/devis/devis_R_50.yaml --eval-only DATASETS.VAL_DATASET yt_vis_val_21 MODEL.WEIGHTS /path/to/checkpoint_file
 ```
 ### Visualize results
 We also provide configuration options to save results for visualization (only for DeVIS). 

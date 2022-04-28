@@ -96,7 +96,6 @@ class DefDETRSegmBase(nn.Module, ABC):
                     warnings.warn("/64 feature map is only generated for encoded and compressed backbone feats. Using the compressed one")
                     features_used.append(srcs[res_to_idx[res]])
                 else:
-                    # TODO check this
                     features_used.append(backbone_feats[backbone_res_to_idx[res]].tensors)
 
             elif feature_type == "compressed_backbone":
@@ -107,11 +106,14 @@ class DefDETRSegmBase(nn.Module, ABC):
                     features_used.append(srcs[res_to_idx[res]])
 
             elif feature_type == "encoded":
-                if res == "/4":
-                    warnings.warn("/4 feature map is only generated for backbone. Using backbone")
-                    features_used.append(backbone_feats[backbone_res_to_idx[res]].tensors)
+                if len(memories) == 1:
+                    features_used.append(memories[0])
                 else:
-                    features_used.append(memories[res_to_idx[res]])
+                    if res == "/4":
+                        warnings.warn("/4 feature map is only generated for backbone. Using backbone")
+                        features_used.append(backbone_feats[backbone_res_to_idx[res]].tensors)
+                    else:
+                        features_used.append(memories[res_to_idx[res]])
             else:
                 raise ValueError(
                     f"Selected feature type {feature_type} is not available. Available ones: [backbone, compressed_backbone, encoded]")
@@ -121,8 +123,12 @@ class DefDETRSegmBase(nn.Module, ABC):
         out, backbone_feats, memories, hs, query_pos, srcs, masks, init_reference, inter_references, \
         level_start_index, valid_ratios, spatial_shapes = self.def_detr(samples, targets)
 
-        memories_att_map = [memories[res_to_idx[res]] for res in self.att_maps_used_res]
-        masks_att_map = [masks[res_to_idx[res]] for res in self.att_maps_used_res]
+        if len(memories) != 1:
+            memories_att_map = [memories[res_to_idx[res]] for res in self.att_maps_used_res]
+            masks_att_map = [masks[res_to_idx[res]] for res in self.att_maps_used_res]
+        else:
+            memories_att_map = [memories[0]]
+            masks_att_map = [masks[0]]
         mask_head_feats = self._get_features_for_mask_head(backbone_feats, srcs, memories)
 
         return out, hs, memories_att_map, mask_head_feats, masks_att_map, spatial_shapes

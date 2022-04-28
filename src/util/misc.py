@@ -173,6 +173,7 @@ class MetricLogger(object):
         self.vis = vis
         self.print_freq = print_freq
         self.debug = debug
+        self.max_memory_all_processes = torch.cuda.max_memory_allocated()
 
     def update(self, **kwargs):
         for k, v in kwargs.items():
@@ -195,9 +196,18 @@ class MetricLogger(object):
             loss_str.append(f"{name}: {meter}")
         return self.delimiter.join(loss_str)
 
-    def synchronize_between_processes(self):
+    def synchronize_between_processes(self, device=None):
+        MB = 1024.0 * 1024.0
         for meter in self.meters.values():
             meter.synchronize_between_processes()
+
+        num_process = get_world_size()
+        if device is not None and num_process > 1:
+            tensor_list = [torch.zeros(1, dtype=torch.int64, device=device) for _ in range(num_process)]
+            dist.all_gather(tensor_list, torch.tensor(torch.cuda.max_memory_allocated(), device=device))
+            self.max_memory_all_processes = max(tensor_list) / MB
+        else:
+            self.max_memory_all_processes = torch.cuda.max_memory_allocated() / MB
 
     def add_meter(self, name, meter):
         self.meters[name] = meter
@@ -272,8 +282,9 @@ class MetricLogger(object):
 
         total_time = time.time() - start_time
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-        print('{} Total time: {} ({:.4f} s / it)'.format(
-            header, total_time_str, total_time / len(iterable)))
+        print('{} Total time: {} ({:.4f} s / it Max memory allocated all processes: {:.0f})'.format(
+            header, total_time_str, total_time / len(iterable), self.max_memory_all_processes))
+
 
 
 def get_sha():

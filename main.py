@@ -17,7 +17,8 @@ import src.util.misc as utils
 from src.datasets import build_dataset
 from src.engine import evaluate_coco, inference_vis, train_one_epoch
 from src.models import build_model, build_tracker
-from src.util.weights_loading_utils import shift_class_neurons, adapt_weights_devis, adapt_weights_mask_head
+from src.util.weights_loading_utils import shift_class_neurons, adapt_weights_devis, \
+    adapt_weights_mask_head
 from src.util.visdom_vis import build_visualizers, get_vis_win_names
 from src.config import get_cfg_defaults
 
@@ -30,7 +31,8 @@ def get_args_parser():
 
     # distributed training parameters
     parser.add_argument('--world-size', default=1, type=int, help='number of distributed processes')
-    parser.add_argument('--dist-url', default='env://', help='url used to set up distributed training')
+    parser.add_argument('--dist-url', default='env://', help='url used to set up distributed '
+                                                             'training')
     parser.add_argument('--device', default='cuda', help='device to use for training / testing')
 
     parser.add_argument(
@@ -45,37 +47,43 @@ def get_args_parser():
 
     return parser
 
-
 def sanity_check(cfg):
-    assert min(cfg.MODEL.LOSS.MASK_AUX_LOSS) >= 0 and max(cfg.MODEL.LOSS.MASK_AUX_LOSS) <= 4, f"Available MODEL.LOSS.MASK_AUX_LOSS levels : [0, 1, 2, 3, 4]"
+    assert min(cfg.MODEL.LOSS.MASK_AUX_LOSS) >= 0 and max(cfg.MODEL.LOSS.MASK_AUX_LOSS) <= 4, \
+        f"Available MODEL.LOSS.MASK_AUX_LOSS levels : [0, 1, 2, 3, 4] "
 
     if cfg.MODEL.LOSS.AUX_LOSS_WEIGHTING:
-        assert cfg.MODEL.TRANSFORMER.DECODER_LAYERS == 6, "MODEL.LOSS.AUX_LOSS_WEIGHTING  weights config available only for 6 layers"
+        assert cfg.MODEL.TRANSFORMER.DECODER_LAYERS == 6, "MODEL.LOSS.AUX_LOSS_WEIGHTING  weights " \
+                                                          "config available only for 6 layers "
 
     if cfg.TEST.USE_TOP_K:
         assert cfg.MODEL.LOSS.FOCAL_LOSS, "TopK can only be used with FOCAL_LOSS"
     else:
         if cfg.DATASETS.TYPE == 'vis':
             assert cfg.TEST.NUM_OUT == (
-                        cfg.MODEL.NUM_QUERIES // cfg.MODEL.DEVIS.NUM_FRAMES), "TEST.NUM_OUT must be equal to number of queries per frame for VIS when not using TopK"
+                        cfg.MODEL.NUM_QUERIES // cfg.MODEL.DEVIS.NUM_FRAMES), \
+                "TEST.NUM_OUT must be equal to number of queries per frame for VIS when not using TopK"
         else:
-            assert cfg.TEST.NUM_OUT == cfg.MODEL.NUM_QUERIES, "TEST.NUM_OUT must be equal to number of queries when not using TopK"
+            assert cfg.TEST.NUM_OUT == cfg.MODEL.NUM_QUERIES, \
+                "TEST.NUM_OUT must be equal to number of queries when not using TopK"
 
     if cfg.DATASETS.TYPE == 'vis':
         assert cfg.MODEL.DEVIS.NUM_FRAMES > 1, "MODEL.DEVIS.NUM_FRAMES must be higher than 1"
-        assert not (cfg.MODEL.NUM_QUERIES % cfg.MODEL.DEVIS.NUM_FRAMES), "MODEL.NUM_QUERIES must be divisible by MODEL.DEVIS.NUM_FRAMES for VIS training"
+        assert not (cfg.MODEL.NUM_QUERIES % cfg.MODEL.DEVIS.NUM_FRAMES), \
+            "MODEL.NUM_QUERIES must be divisible by MODEL.DEVIS.NUM_FRAMES for VIS training"
         if cfg.SOLVER.DEVIS.FINETUNE_QUERY_EMBEDDINGS:
-            assert not (300 % (
-                        cfg.MODEL.NUM_QUERIES // cfg.MODEL.DEVIS.NUM_FRAMES)), "Number of queries per frame must be divisible by 300 for SOLVER.DEVIS.FINETUNE_QUERY_EMBEDDINGS"
+            assert not (300 % (cfg.MODEL.NUM_QUERIES // cfg.MODEL.DEVIS.NUM_FRAMES)), \
+                "Number of queries per frame must be divisible by 300 for SOLVER.DEVIS.FINETUNE_QUERY_EMBEDDINGS"
 
         assert cfg.SOLVER.BATCH_SIZE == 1, "Batch size > 1 not implemented for VIS training"
-        assert cfg.TEST.CLIP_TRACKING.STRIDE < cfg.MODEL.DEVIS.NUM_FRAMES, "Clip tracking stride can not be higher than the clip size"
+        assert cfg.TEST.CLIP_TRACKING.STRIDE < cfg.MODEL.DEVIS.NUM_FRAMES, \
+            "Clip tracking stride can not be higher than the clip size"
 
     if cfg.TEST.INPUT_FOLDER:
-        assert len(cfg.TEST.EPOCHS_TO_EVAL) >= 1, "TEST.EPOCHS_TO_EVAL must contain at least 1 epoch number"
+        assert len(cfg.TEST.EPOCHS_TO_EVAL) >= 1, \
+            "TEST.EPOCHS_TO_EVAL must contain at least 1 epoch number"
 
-    assert not (
-                cfg.MODEL.WITH_BBX_REFINE and cfg.MODEL.WITH_REF_POINT_REFINE), "MODEL.WITH_BBX_REFINE can not be activated together with cfg.MODEL.WITH_BBX_REFINE, select one of the two"
+    assert not (cfg.MODEL.WITH_BBX_REFINE and cfg.MODEL.WITH_REF_POINT_REFINE), \
+        "MODEL.WITH_BBX_REFINE can not be activated together with cfg.MODEL.WITH_BBX_REFINE, select one of the two"
 
 
 def main(args, cfg):
@@ -131,10 +139,13 @@ def main(args, cfg):
         sampler_train, cfg.SOLVER.BATCH_SIZE, drop_last=True)
 
     data_loader_train = DataLoader(train_dataset, batch_sampler=batch_sampler_train,
-                                   collate_fn=utils.collate_fn, num_workers=cfg.NUM_WORKERS, worker_init_fn=utils.seed_worker, generator=g)
+                                   collate_fn=utils.collate_fn, num_workers=cfg.NUM_WORKERS,
+                                   worker_init_fn=utils.seed_worker, generator=g)
 
-    data_loader_val = DataLoader(dataset_val, cfg.SOLVER.BATCH_SIZE, sampler=sampler_val, collate_fn=utils.val_collate if cfg.DATASETS.TYPE == 'vis' else utils.collate_fn,
-                                 num_workers=cfg.NUM_WORKERS)
+    data_loader_val = DataLoader(dataset_val, cfg.SOLVER.BATCH_SIZE, sampler=sampler_val,
+                                 collate_fn=utils.val_collate if cfg.DATASETS.TYPE == 'vis' else utils.collate_fn,
+                                 num_workers=cfg.NUM_WORKERS
+                                 )
 
     output_dir = Path(cfg.OUTPUT_DIR)
 
@@ -143,7 +154,7 @@ def main(args, cfg):
             # Allow all checkpoints input_folder test
             if cfg.TEST.INPUT_FOLDER:
                 for epoch_to_eval in cfg.TEST.EPOCHS_TO_EVAL:
-                    print(f"*********************** Starting validation epoch {epoch_to_eval} ***********************")
+                    print(f"************* Starting validation epoch {epoch_to_eval} *************")
                     checkpoint_path = os.path.join(cfg.TEST.INPUT_FOLDER, f"checkpoint_epoch_{epoch_to_eval}.pth")
                     assert os.path.exists(checkpoint_path), f"Checkpoint path {checkpoint_path} DOESN'T EXIST"
                     out_folder_name = f"val_epoch_{epoch_to_eval}"
@@ -151,7 +162,8 @@ def main(args, cfg):
                     model_without_ddp.load_state_dict(resume_state_dict, strict=True)
 
                     _ = inference_vis(
-                        tracker, data_loader_val, dataset_val, visualizers['val'], device, output_dir, out_folder_name, epoch_to_eval)
+                        tracker, data_loader_val, dataset_val, visualizers['val'], device,
+                        output_dir, out_folder_name, epoch_to_eval)
 
             else:
                 out_folder_name = cfg.TEST.SAVE_PATH
@@ -159,7 +171,8 @@ def main(args, cfg):
                 model_without_ddp.load_state_dict(resume_state_dict, strict=True)
 
                 _ = inference_vis(
-                    tracker, data_loader_val, dataset_val, visualizers['val'], device, output_dir, out_folder_name, 0)
+                    tracker, data_loader_val, dataset_val, visualizers['val'], device, output_dir,
+                    out_folder_name, 0)
 
         else:
             checkpoint = torch.load(cfg.MODEL.WEIGHTS, map_location=device)['model']
@@ -171,7 +184,10 @@ def main(args, cfg):
 
             model_without_ddp.load_state_dict(checkpoint, strict=True)
             _, coco_evaluator = evaluate_coco(
-                model, criterion, postprocessors, data_loader_val, device, output_dir, visualizers['val'], cfg.VISDOM_AND_LOG_INTERVAL, cfg.START_EPOCH)
+                model, criterion, postprocessors, data_loader_val, device, output_dir,
+                visualizers['val'], cfg.VISDOM_AND_LOG_INTERVAL, cfg.START_EPOCH
+            )
+
             if cfg.OUTPUT_DIR:
                 utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth")
         return
@@ -189,9 +205,11 @@ def main(args, cfg):
         {
             "params":
                 [p for n, p in model_without_ddp.named_parameters()
-                 if not utils.match_name_keywords(n,
-                                                  cfg.SOLVER.BACKBONE_NAMES + cfg.SOLVER.LR_LINEAR_PROJ_NAMES +
-                                                  cfg.SOLVER.LR_MASK_HEAD_NAMES + cfg.SOLVER.DEVIS.LR_TEMPORAL_LINEAR_PROJ_NAMES) and p.requires_grad],
+                 if not utils.match_name_keywords(n, cfg.SOLVER.BACKBONE_NAMES +
+                                                  cfg.SOLVER.LR_LINEAR_PROJ_NAMES +
+                                                  cfg.SOLVER.LR_MASK_HEAD_NAMES +
+                                                  cfg.SOLVER.DEVIS.LR_TEMPORAL_LINEAR_PROJ_NAMES)
+                 and p.requires_grad],
             "lr": cfg.SOLVER.BASE_LR,
         },
 
@@ -235,11 +253,18 @@ def main(args, cfg):
         model_state_dict = model_without_ddp.state_dict()
 
         if cfg.DATASETS.TYPE == 'vis':
-            checkpoint_state_dict = adapt_weights_devis(checkpoint_state_dict, model_state_dict, cfg.MODEL.NUM_FEATURE_LEVELS, cfg.MODEL.LOSS.FOCAL_LOSS,
-                                                        cfg.SOLVER.DEVIS.FINETUNE_CLASS_LOGITS, cfg.MODEL.DEVIS.NUM_FRAMES, cfg.SOLVER.DEVIS.FINETUNE_QUERY_EMBEDDINGS,
-                                                        cfg.SOLVER.DEVIS.FINETUNE_TEMPORAL_MODULES, cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_CONNECT_ALL_FRAMES,
-                                                        cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_TEMPORAL_WINDOW, cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_N_POINTS_TEMPORAL_FRAME,
-                                                        cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.DEC_N_POINTS_TEMPORAL_FRAME)
+            checkpoint_state_dict = adapt_weights_devis(checkpoint_state_dict, model_state_dict,
+                                                        cfg.MODEL.NUM_FEATURE_LEVELS,
+                                                        cfg.MODEL.LOSS.FOCAL_LOSS,
+                                                        cfg.SOLVER.DEVIS.FINETUNE_CLASS_LOGITS,
+                                                        cfg.MODEL.DEVIS.NUM_FRAMES,
+                                                        cfg.SOLVER.DEVIS.FINETUNE_QUERY_EMBEDDINGS,
+                                                        cfg.SOLVER.DEVIS.FINETUNE_TEMPORAL_MODULES,
+                                                        cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_CONNECT_ALL_FRAMES,
+                                                        cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_TEMPORAL_WINDOW,
+                                                        cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_N_POINTS_TEMPORAL_FRAME,
+                                                        cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.DEC_N_POINTS_TEMPORAL_FRAME
+                                                        )
 
         else:
             if cfg.MODEL.SHIFT_CLASS_NEURON:
@@ -281,7 +306,9 @@ def main(args, cfg):
             sampler_train.set_epoch(epoch)
 
         train_one_epoch(
-            model, criterion, data_loader_train, optimizer, device, epoch, visualizers['train'], cfg.VISDOM_AND_LOG_INTERVAL, cfg.SOLVER.GRAD_CLIP_MAX_NORM)
+            model, criterion, data_loader_train, optimizer, device, epoch, visualizers['train'],
+            cfg.VISDOM_AND_LOG_INTERVAL, cfg.SOLVER.GRAD_CLIP_MAX_NORM
+        )
 
         lr_scheduler.step()
 
@@ -296,7 +323,8 @@ def main(args, cfg):
             if cfg.DATASETS.TYPE == 'vis':
                 out_folder_name = os.path.join(cfg.TEST.SAVE_PATH, f"epoch_{epoch}")
                 _ = inference_vis(
-                    tracker, data_loader_val, dataset_val, visualizers['val'], device, output_dir, out_folder_name, epoch)
+                    tracker, data_loader_val, dataset_val, visualizers['val'], device, output_dir,
+                    out_folder_name, epoch)
                 # TODO: If val_dataset has_gt save additionally best epoch
 
             else:
@@ -334,7 +362,8 @@ def main(args, cfg):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser('DeVIS training and evaluation script', parents=[get_args_parser()])
+    parser = argparse.ArgumentParser('DeVIS training and evaluation script',
+                                     parents=[get_args_parser()])
     args_ = parser.parse_args()
 
     cfg_ = get_cfg_defaults()
