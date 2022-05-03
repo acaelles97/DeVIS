@@ -26,7 +26,7 @@ from src.config import get_cfg_defaults
 def get_args_parser():
     parser = argparse.ArgumentParser('DeVIS argument parser', add_help=False)
 
-    parser.add_argument('--config-file', help="Run test only")
+    parser.add_argument('--config-file', help="Configuration file path")
     parser.add_argument('--eval-only', action='store_true', help="Run test only")
 
     # distributed training parameters
@@ -47,9 +47,11 @@ def get_args_parser():
 
     return parser
 
+
 def sanity_check(cfg):
-    assert min(cfg.MODEL.LOSS.MASK_AUX_LOSS) >= 0 and max(cfg.MODEL.LOSS.MASK_AUX_LOSS) <= 4, \
-        f"Available MODEL.LOSS.MASK_AUX_LOSS levels : [0, 1, 2, 3, 4] "
+    if cfg.MODEL.LOSS.MASK_AUX_LOSS:
+        assert min(cfg.MODEL.LOSS.MASK_AUX_LOSS) >= 0 and max(cfg.MODEL.LOSS.MASK_AUX_LOSS) <= 4, \
+            f"Available MODEL.LOSS.MASK_AUX_LOSS levels : [0, 1, 2, 3, 4] "
 
     if cfg.MODEL.LOSS.AUX_LOSS_WEIGHTING:
         assert cfg.MODEL.TRANSFORMER.DECODER_LAYERS == 6, "MODEL.LOSS.AUX_LOSS_WEIGHTING  weights " \
@@ -60,7 +62,7 @@ def sanity_check(cfg):
     else:
         if cfg.DATASETS.TYPE == 'vis':
             assert cfg.TEST.NUM_OUT == (
-                        cfg.MODEL.NUM_QUERIES // cfg.MODEL.DEVIS.NUM_FRAMES), \
+                    cfg.MODEL.NUM_QUERIES // cfg.MODEL.DEVIS.NUM_FRAMES), \
                 "TEST.NUM_OUT must be equal to number of queries per frame for VIS when not using TopK"
         else:
             assert cfg.TEST.NUM_OUT == cfg.MODEL.NUM_QUERIES, \
@@ -114,7 +116,10 @@ def main(args, cfg):
     model, criterion, postprocessors = build_model(num_classes, device, cfg)
     model.to(device)
 
-    visualizers = build_visualizers(cfg)
+    visualizers = {}
+    if cfg.DATASETS.TYPE != 'vis' or not args.eval_only:
+        visualizers = build_visualizers(cfg)
+
     model_without_ddp = model
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
@@ -151,19 +156,26 @@ def main(args, cfg):
 
     if args.eval_only:
         if cfg.DATASETS.TYPE == 'vis':
+            # Used for visualization purposes only
+            selected_videos = ''
+            if cfg.TEST.VIZ.VIDEO_NAMES:
+                selected_videos = cfg.TEST.VIZ.VIDEO_NAMES.split(",")
+
             # Allow all checkpoints input_folder test
             if cfg.TEST.INPUT_FOLDER:
                 for epoch_to_eval in cfg.TEST.EPOCHS_TO_EVAL:
                     print(f"************* Starting validation epoch {epoch_to_eval} *************")
-                    checkpoint_path = os.path.join(cfg.TEST.INPUT_FOLDER, f"checkpoint_epoch_{epoch_to_eval}.pth")
-                    assert os.path.exists(checkpoint_path), f"Checkpoint path {checkpoint_path} DOESN'T EXIST"
+                    checkpoint_path = os.path.join(cfg.TEST.INPUT_FOLDER,
+                                                   f"checkpoint_epoch_{epoch_to_eval}.pth")
+                    assert os.path.exists(
+                        checkpoint_path), f"Checkpoint path {checkpoint_path} DOESN'T EXIST"
                     out_folder_name = f"val_epoch_{epoch_to_eval}"
                     resume_state_dict = torch.load(checkpoint_path, map_location=device)['model']
                     model_without_ddp.load_state_dict(resume_state_dict, strict=True)
 
                     _ = inference_vis(
-                        tracker, data_loader_val, dataset_val, visualizers['val'], device,
-                        output_dir, out_folder_name, epoch_to_eval)
+                        tracker, data_loader_val, dataset_val, visualizers, device,
+                        output_dir, out_folder_name, epoch_to_eval, selected_videos)
 
             else:
                 out_folder_name = cfg.TEST.SAVE_PATH
@@ -171,8 +183,8 @@ def main(args, cfg):
                 model_without_ddp.load_state_dict(resume_state_dict, strict=True)
 
                 _ = inference_vis(
-                    tracker, data_loader_val, dataset_val, visualizers['val'], device, output_dir,
-                    out_folder_name, 0)
+                    tracker, data_loader_val, dataset_val, visualizers, device, output_dir,
+                    out_folder_name, 0, selected_videos)
 
         else:
             checkpoint = torch.load(cfg.MODEL.WEIGHTS, map_location=device)['model']
@@ -221,25 +233,29 @@ def main(args, cfg):
 
         {
             "params": [p for n, p in model_without_ddp.named_parameters() if
-                       utils.match_name_keywords(n, cfg.SOLVER.LR_LINEAR_PROJ_NAMES) and p.requires_grad],
+                       utils.match_name_keywords(n,
+                                                 cfg.SOLVER.LR_LINEAR_PROJ_NAMES) and p.requires_grad],
             "lr": cfg.SOLVER.BASE_LR * cfg.SOLVER.LR_LINEAR_PROJ_MULT,
         },
 
         {
             "params": [p for n, p in model_without_ddp.named_parameters() if
-                       utils.match_name_keywords(n, cfg.SOLVER.LR_MASK_HEAD_NAMES) and p.requires_grad],
+                       utils.match_name_keywords(n,
+                                                 cfg.SOLVER.LR_MASK_HEAD_NAMES) and p.requires_grad],
             "lr": cfg.SOLVER.BASE_LR * cfg.SOLVER.LR_MASK_HEAD_MULT,
         },
 
         {
             "params": [p for n, p in model_without_ddp.named_parameters() if
-                       utils.match_name_keywords(n, cfg.SOLVER.DEVIS.LR_TEMPORAL_LINEAR_PROJ_NAMES) and p.requires_grad],
+                       utils.match_name_keywords(n,
+                                                 cfg.SOLVER.DEVIS.LR_TEMPORAL_LINEAR_PROJ_NAMES) and p.requires_grad],
             "lr": cfg.SOLVER.BASE_LR * cfg.SOLVER.DEVIS.LR_TEMPORAL_LINEAR_PROJ_MULT,
         }
 
     ]
 
-    optimizer = torch.optim.AdamW(param_dicts, lr=cfg.SOLVER.BASE_LR, weight_decay=cfg.SOLVER.WEIGHT_DECAY)
+    optimizer = torch.optim.AdamW(param_dicts, lr=cfg.SOLVER.BASE_LR,
+                                  weight_decay=cfg.SOLVER.WEIGHT_DECAY)
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.SOLVER.STEPS)
 
     best_val_stats = None
@@ -271,9 +287,11 @@ def main(args, cfg):
                 checkpoint_state_dict = shift_class_neurons(checkpoint_state_dict)
 
             if cfg.MODEL.MASK_ON:
-                checkpoint_state_dict = adapt_weights_mask_head(checkpoint_state_dict, model_state_dict)
+                checkpoint_state_dict = adapt_weights_mask_head(checkpoint_state_dict,
+                                                                model_state_dict)
 
-        missing_keys, unexpected_keys = model_without_ddp.load_state_dict(checkpoint_state_dict, strict=False)
+        missing_keys, unexpected_keys = model_without_ddp.load_state_dict(checkpoint_state_dict,
+                                                                          strict=False)
 
         if len(missing_keys) > 0:
             print('Missing Keys: {}'.format(missing_keys))
@@ -324,7 +342,7 @@ def main(args, cfg):
                 out_folder_name = os.path.join(cfg.TEST.SAVE_PATH, f"epoch_{epoch}")
                 _ = inference_vis(
                     tracker, data_loader_val, dataset_val, visualizers['val'], device, output_dir,
-                    out_folder_name, epoch)
+                    out_folder_name, epoch, '')
                 # TODO: If val_dataset has_gt save additionally best epoch
 
             else:

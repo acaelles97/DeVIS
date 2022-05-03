@@ -251,17 +251,17 @@ def visualize_results_merged(folder_images, images_path, video_results, final_cl
     unique_files = list(set(all_files))
     unique_files.sort()
     video_name = unique_files[0].split("/")[0]
-    cmap = create_color_map(N=10)[1:]
+    cmap = create_color_map(N=15)[1:]
     out_folder = os.path.join(out_path, video_name)
     os.makedirs(out_folder, exist_ok=True)
 
     class_names = None
     thickness = 2
-    font_size = 30
+    font_size = 15
     win_name = 'COCO visualization'
     out_file = None
 
-    show_bbx = True
+    show_bbx = False
     show_cat = True
 
     for t, image_path  in enumerate(unique_files):

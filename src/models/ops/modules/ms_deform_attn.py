@@ -380,7 +380,7 @@ class TemporalMSDeformAttnEncoder(TemporalMSDeformAttnBase):
 
         output = torch.cat(output, dim=0)
         output = self.output_proj(output)
-        return output
+        return output, None
 
 
 class TemporalFlattenMSDeformAttn(TemporalMSDeformAttnBase):

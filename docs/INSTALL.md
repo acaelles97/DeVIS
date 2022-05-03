@@ -11,15 +11,14 @@
    3. Install [youtube-vis](https://github.com/youtubevos/cocoapi) api
    4. Install MultiScaleDeformableAttention package: `python src/models/ops/setup.py build_ext install`
 
-If you experience problems installing youtube-vis api, we recommend cloning the repo and adding its path to the import part as follows:
+Check [this](https://github.com/Epiphqny/VisTR/issues/5) if you experience problems installing youtube-vis api
 
 
 ## Dataset preparation
 First step is to download and extract each dataset: [COCO](https://cocodataset.org/#home), [YT-19](https://youtube-vos.org/dataset/vis/), [YT-21](https://youtube-vos.org/dataset/vis/) & [OVIS](http://songbai.site/ovis/)
-We expect the following organization for  training. 
 User must set `DATASETS.DATA_PATH` to the root data path. 
-We refer to `src/datasets/coco.py` & `src/datasets/vis.py` to modify the expected format for COCO dataset and VIS datasets respectively.
-
+We refer to [`src/datasets/coco.py`](../src/datasets/coco.py) & [`src/datasets/vis.py`](../src/datasets/vis.py) to modify the expected format for COCO dataset and VIS datasets respectively.
+We expect the following organization:
 ```
 cfg.DATASETS.DATA_PATH/
 └── COCO/
@@ -53,4 +52,11 @@ cfg.DATASETS.DATA_PATH/
 
 ```
 
-## Download weights
+## Download pre-trained weights
+We provide pre-trained weights for the Deformable Mask Head training, as well as DeVIS (including ablations). 
+We expect them to be downloaded and unpacked under the [`weights`](../weights) directory
+```
+cd weights
+wget https://vision.in.tum.de/webshare/u/cad/ablation_pre-trained_weights.zip
+unzip ablation_pre-trained_weights.zip
+```

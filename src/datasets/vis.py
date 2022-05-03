@@ -4,16 +4,14 @@ YoutubeVIS data loader
 from pathlib import Path
 import torch
 import torch.utils.data
-import sys
 import torchvision.transforms as torch_T
+from pycocotools.ytvos import YTVOS
 import json
 import os
 from PIL import Image
 import cv2
 from .vis_transforms import VISTransformsApplier, ConvertCocoPolysToValuedMaskNumpy
 import src.datasets.vis_transforms as VisT
-sys.path.append("/usr/stud/cad/projects/VisTR/cocoapi/PythonAPI")
-from pycocotools_.ytvos import YTVOS
 
 
 class VISTrainDataset:
@@ -113,6 +111,7 @@ class VideoClip(torch.utils.data.dataset.Dataset):
         self.original_size = original_size
         self.final_video_length = final_video_length
         self.cat_names = cat_names
+        self.video_name = video_clips[0][0].split("/")[0]
 
     def __len__(self):
         return len(self.video_clips)
@@ -125,7 +124,6 @@ class VideoClip(torch.utils.data.dataset.Dataset):
             clip_imgs_set.append(self.transform(im).unsqueeze(0))
         img = torch.cat(clip_imgs_set, 0)
         return img
-
 
 class VISValDataset(torch.utils.data.dataset.Dataset):
 

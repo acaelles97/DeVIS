@@ -203,14 +203,19 @@ def evaluate_coco(model: torch.nn.Module, criterion: torch.nn.Module, postproces
 
 
 @torch.no_grad()
-def inference_vis(tracker: Tracker, data_loader_val: DataLoader, dataset_val: VISValDataset, visualizers: dict, device: torch.device, output_dir: Path, out_folder_name: str,
-                  epoch: int):
+def inference_vis(tracker: Tracker, data_loader_val: DataLoader, dataset_val: VISValDataset,
+                  visualizers: dict, device: torch.device, output_dir: Path, out_folder_name: str,
+                  epoch: int, selected_videos: str):
+
     tracker.model.eval()
 
     all_tracks = []
     init_time = time.time()
     all_times = []
+
     for idx, video in tqdm.tqdm(enumerate(data_loader_val)):
+        if selected_videos and video.video_name not in selected_videos:
+            continue
         video_tracks, all_times = tracker(video, device, all_times)
         all_tracks.extend(video_tracks)
 

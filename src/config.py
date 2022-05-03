@@ -156,7 +156,7 @@ _C.DATASETS = CN()
 # Allows switching between the VIS or Instance segmentation model. Allowed values: 'vis' or 'coco'
 _C.DATASETS.TYPE = 'coco'
 # Root path of all training data.
-_C.DATASETS.DATA_PATH = 'datasets'
+_C.DATASETS.DATA_PATH = 'data'
 _C.DATASETS.TRAIN_DATASET = 'train'
 _C.DATASETS.VAL_DATASET = 'val'
 
@@ -297,6 +297,9 @@ _C.TEST.VIZ.OUT_VIZ_PATH = ''
 _C.TEST.VIZ.SAVE_CLIP_VIZ = False
 # Allows saving results plotting all instances on the same image. OUT_VIZ_PATH  needs to be specified
 _C.TEST.VIZ.SAVE_MERGED_TRACKS = False
+# Allows running only the desired video names from all the validation dataset videos.
+# Must be separated by comma.
+_C.TEST.VIZ.VIDEO_NAMES = ''
 
 # ---------------------------------------------------------------------------- #
 # Misc options
