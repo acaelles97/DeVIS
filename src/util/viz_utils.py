@@ -1,6 +1,5 @@
 import numpy as np
 import os
-import tqdm
 import cv2
 import torch
 import pycocotools.mask as mask_tools
@@ -8,7 +7,6 @@ import pycocotools.mask as mask_tools
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon, Circle
 from matplotlib.collections import PatchCollection
-import torch.nn.functional as F
 
 
 def get_most_left_coordinate(mask):
@@ -251,7 +249,9 @@ def visualize_results_merged(folder_images, images_path, video_results, final_cl
     unique_files = list(set(all_files))
     unique_files.sort()
     video_name = unique_files[0].split("/")[0]
-    cmap = create_color_map(N=15)[1:]
+    # cmap = create_color_map(N=15)[1:]
+    cmap = np.array([[151, 208, 119], [227, 0, 227]])
+
     out_folder = os.path.join(out_path, video_name)
     os.makedirs(out_folder, exist_ok=True)
 
@@ -262,7 +262,7 @@ def visualize_results_merged(folder_images, images_path, video_results, final_cl
     out_file = None
 
     show_bbx = False
-    show_cat = True
+    show_cat = False
 
     for t, image_path  in enumerate(unique_files):
         frame_name = image_path.split("/")[1]

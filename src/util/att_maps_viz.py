@@ -1,7 +1,5 @@
-from .viz_utils import create_color_map, get_most_left_coordinate
 import numpy as np
 import os
-import tqdm
 import cv2
 import torch
 import pycocotools.mask as mask_tools
@@ -11,6 +9,7 @@ from matplotlib.patches import Polygon, Circle
 from matplotlib.collections import PatchCollection
 import torch.nn.functional as F
 from . import box_ops
+from .viz_utils import create_color_map, get_most_left_coordinate
 
 
 def imshow_det_masks_for_tracks(img, instance, cmap,
@@ -136,12 +135,13 @@ def create_masks(idx, folder_images, images_path, tracks, out_path, class_name):
 
     for t, image_path in enumerate(images_path):
 
-        for track_id, track in enumerate(tracks[1:]):
+        for track_id, track in enumerate(tracks[:1]):
             mask = track.masks[t]
             mask = mask_tools.decode(mask)
             mask = (mask * 255).astype(np.uint8)
             hp = cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB)
-            cv2.imwrite(os.path.join(out_folder, f"frame_{t}.png"), hp)
+            name = image_path.split("/")[1].split(".")[0]
+            cv2.imwrite(os.path.join(out_folder, f"frame_{name}.png"), hp)
 
 
 def plot_both_masks(idx, folder_images, images_path, tracks, out_path, class_name):
@@ -203,6 +203,220 @@ def process_ref_point(ref_point, image_shape):
     np_poly = np.array(poly).reshape((4, 2))
 
     return np_poly, centroid_ref_point
+
+
+def visualize_clips_with_att_maps_merged_res_v2(idx, folder_images, images_path, tracks, layer,
+                                                merge_resolution, out_path, class_name):
+    video_name = images_path[0].split("/")[0]
+    # cmap = create_color_map()[1:]
+
+    cmap = np.array([[227, 0, 227], [151, 208, 119]])
+
+    window_idx = idx
+    out_folder_track = os.path.join(out_path, video_name)
+    os.makedirs(out_folder_track, exist_ok=True)
+
+    border_color = (255/255, 128/255, 0/255)
+
+    num_frames = len(images_path)
+    target_width = None
+    image_shape = None
+    if target_width:
+        image = cv2.imread(os.path.join(folder_images, images_path[0]))
+        height, width = image.shape[:2]
+        resize_factor = target_width / width
+        image_shape = (int(height * resize_factor), int(width * resize_factor))
+
+    # fig, axs = plt.subplots(ncols=num_frames, nrows=num_frames + 1, figsize=(40, 23))
+    fig, axs = plt.subplots(ncols=num_frames, nrows=num_frames + 1, figsize=(38, 28))
+
+    # First row images
+    for i, t in enumerate(range(num_frames)):
+        image = cv2.imread(os.path.join(folder_images, images_path[t]))
+        if image_shape:
+            image = cv2.resize(image, (image_shape[1], image_shape[0]))
+        image_shape = image.shape[:2]
+        for id_, track_to_put in enumerate(tracks):
+            mask = track_to_put.masks[i]
+            if mask is None:
+                mask = np.zeros_like(image)
+            else:
+                mask = mask_tools.decode(mask)
+            if target_width:
+                mask = np.resize(mask, image_shape)
+            bbox = track_to_put.boxes[i]
+            if isinstance(bbox, list):
+                bbox = np.array(bbox)
+
+            bbox_int = bbox.astype(np.int32)
+            poly = [[bbox_int[0], bbox_int[1]], [bbox_int[0], bbox_int[3]],
+                    [bbox_int[2], bbox_int[3]], [bbox_int[2], bbox_int[1]]]
+            np_poly = np.array(poly).reshape((4, 2))
+
+            color_mask = cmap[track_to_put.get_id()]
+            bbx_color = [(float(color_mask[2] / 255), float(color_mask[1] / 255),
+                          float(color_mask[0] / 255))]
+
+            p = PatchCollection(
+                [Polygon(np_poly)], facecolor='none', edgecolors=bbx_color, linewidths=4)
+
+            axs[0, i].add_collection(p)
+
+            image[mask != 0] = image[mask != 0] * 0.65 + color_mask * 0.35
+
+        image = image[..., ::-1].copy()
+        axs[0, i].imshow(image)
+        # axs[0, i].axis('off')
+        axs[0, i].set_yticklabels([])
+        axs[0, i].set_xticklabels([])
+
+        axs[0, i].axes.xaxis.set_visible(False)
+        axs[0, i].axes.yaxis.set_visible(False)
+
+
+        axs[0, i].patch.set_edgecolor(border_color)
+        axs[0, i].patch.set_linewidth('13')
+
+    for i, curr_frame in enumerate(range(num_frames)):
+
+        temporal_frames = [t_1 for t_1 in range(-curr_frame, num_frames - curr_frame)]
+        temporal_counter = 0
+
+        for idx, temporal_frame in enumerate(temporal_frames):
+            att_map_resolution = tracks[0].spatial_shapes[merge_resolution]
+            feature_map = torch.zeros((att_map_resolution[0], att_map_resolution[1]),
+                                      device=tracks[0].temporal_positions.device)
+
+            if temporal_frame == 0:
+                for track in tracks:
+                    curr_frame_positions = track.curr_position[curr_frame].flatten(0, 2)
+                    curr_frame_positions[:, 0].clamp_(0, att_map_resolution[1] - 1)
+                    curr_frame_positions[:, 1].clamp_(0, att_map_resolution[0] - 1)
+                    curr_frame_weights = track.curr_att_weights[curr_frame].flatten(0, 2)
+
+                    for position, weight in zip(curr_frame_positions, curr_frame_weights):
+                        feature_map[position[1], position[0]] += weight
+
+                # feature_map = (feature_map / feature_map.max())
+
+                feature_map = \
+                    F.interpolate(feature_map[None, None], image_shape, mode="bilinear",
+                                  align_corners=False).detach().to("cpu")[0, 0]
+
+                axs[i + 1, idx].imshow(feature_map, cmap='cividis')
+
+                for track in tracks:
+                    color_track = cmap[track.get_id()]
+                    bbx_track_color = [(float(color_track[2] / 255), float(color_track[1] / 255),
+                                        float(color_track[0] / 255))]
+
+                    ref_point = track.ref_point[curr_frame]
+
+                    if ref_point.shape[-1] == 4:
+                        np_poly, centroid_ref_point = process_ref_point(ref_point, image_shape)
+
+                        p = PatchCollection(
+                            [Polygon(np_poly)], facecolor='none', edgecolors=bbx_track_color,
+                            linewidths=3.5, linestyles='solid')
+                        axs[i + 1, idx].add_collection(p)
+
+                    else:
+                        centroid_ref_point = torch.round(
+                            ref_point * torch.tensor([image_shape[1], image_shape[0]],
+                                                     device=ref_point.device)).cpu()
+
+                    mymarker = axs[i + 1, idx].scatter(centroid_ref_point[0],
+                                                       centroid_ref_point[1], s=700,
+                                                       color=bbx_track_color[0],
+                                                       marker='x', linewidths=2.5)
+                    axs[i + 1, idx].add_artist(mymarker)
+                    # axs[i + 1, idx].axis('off')
+
+                axs[i + 1, idx].set_yticklabels([])
+                axs[i + 1, idx].set_xticklabels([])
+
+                axs[i + 1, idx].axes.xaxis.set_visible(False)
+                axs[i + 1, idx].axes.yaxis.set_visible(False)
+
+                axs[i + 1, idx].patch.set_edgecolor(border_color)
+                axs[i + 1, idx].patch.set_linewidth('13')
+
+            else:
+                for track in tracks:
+                    temporal_positions = track.temporal_positions[curr_frame, :,
+                                         temporal_counter].flatten(0, 2)
+                    temporal_positions[:, 0].clamp_(0, att_map_resolution[1] - 1)
+                    temporal_positions[:, 1].clamp_(0, att_map_resolution[0] - 1)
+                    temporal_frame_weights = track.temporal_att_weights[curr_frame, :,
+                                             temporal_counter].flatten(0, 2)
+
+                    for position, weight in zip(temporal_positions, temporal_frame_weights):
+                        feature_map[position[1], position[0]] += weight
+
+                # feature_map = (feature_map / feature_map.max())
+                feature_map = \
+                    F.interpolate(feature_map[None, None], image_shape, mode="bilinear",
+                                  align_corners=False).detach().to("cpu")[0, 0]
+                # feature_map = feature_map.to("cpu")
+                axs[i + 1, idx].imshow(feature_map, cmap='cividis')
+
+                axs[i + 1, idx].set_yticklabels([])
+                axs[i + 1, idx].set_xticklabels([])
+
+                axs[i + 1, idx].axes.xaxis.set_visible(False)
+                axs[i + 1, idx].axes.yaxis.set_visible(False)
+
+                # axs[i + 1, idx].axis('off')
+
+                for track in tracks:
+                    color_track = cmap[track.get_id()]
+                    bbx_track_color = [(float(color_track[2] / 255), float(color_track[1] / 255),
+                                        float(color_track[0] / 255))]
+                    # Allows visualizing instance aware decoder attention
+                    if layer == 0:
+                        ref_point_frame = curr_frame
+                    else:
+                        ref_point_frame = curr_frame + temporal_frame
+
+                    ref_point = track.ref_point[ref_point_frame]
+
+                    if ref_point.shape[-1] == 4:
+                        np_poly, centroid_ref_point = process_ref_point(ref_point, image_shape)
+                        p = PatchCollection(
+                            [Polygon(np_poly)], facecolor='none', edgecolors=bbx_track_color,
+                            linewidths=3.5, linestyles='dashed')
+
+                        # linewidths=4, linestyles='dashed')
+
+                        axs[i + 1, idx].add_collection(p)
+
+                    else:
+                        centroid_ref_point = torch.round(
+                            ref_point * torch.tensor([image_shape[1], image_shape[0]],
+                                                     device=ref_point.device)).cpu()
+
+                    mymarker = axs[i + 1, idx].scatter(centroid_ref_point[0],
+                                                       centroid_ref_point[1], s=1000,
+                                                       color=bbx_track_color[0], marker='x',
+                                                       linewidths=3, linestyles='dotted')
+                    axs[i + 1, idx].add_artist(mymarker)
+
+                temporal_counter += 1
+
+        axs[-1, -1].patch.set_edgecolor(border_color)
+        axs[-1, -1].patch.set_linewidth('13')
+
+        # plt.gca().set_axis_off()
+        plt.subplots_adjust(top=1, bottom=0, right=1, left=0,   hspace=0, wspace=0.045)
+        # plt.margins(0, 0)
+        # plt.gca().xaxis.set_major_locator(plt.NullLocator())
+        # plt.gca().yaxis.set_major_locator(plt.NullLocator())
+        out_name = f"window_{window_idx}_res_" \
+                   f"{track.spatial_shapes[merge_resolution][0]}-{track.spatial_shapes[merge_resolution][1]}.png"
+
+        plt.savefig(os.path.join(out_folder_track, out_name), bbox_inches='tight', pad_inches=0.1)
+
+    plt.close('all')
 
 
 def visualize_clips_with_att_maps_merged_res(idx, folder_images, images_path, tracks, layer,
@@ -309,8 +523,8 @@ def visualize_clips_with_att_maps_merged_res(idx, folder_images, images_path, tr
 
                     # feature_map = (feature_map / feature_map.max())
                     feature_map = \
-                    F.interpolate(feature_map[None, None], image_shape, mode="bilinear",
-                                  align_corners=False).detach().to("cpu")[0, 0]
+                        F.interpolate(feature_map[None, None], image_shape, mode="bilinear",
+                                      align_corners=False).detach().to("cpu")[0, 0]
                     # feature_map = feature_map.to("cpu")[0, 0]
                     axs[i + 1, idx + 1].imshow(feature_map, cmap='cividis')
 
@@ -498,8 +712,8 @@ def visualize_clips_with_att_maps_per_reslvl(idx, folder_images, images_path, tr
 
                         # feature_map = (feature_map / feature_map.max())
                         feature_map = \
-                        F.interpolate(feature_map[None, None], image_shape, mode="bilinear",
-                                      align_corners=False).detach().to("cpu")[0, 0]
+                            F.interpolate(feature_map[None, None], image_shape, mode="bilinear",
+                                          align_corners=False).detach().to("cpu")[0, 0]
                         # feature_map = feature_map.to("cpu")[0, 0]
                         axs[i + 1, idx + 1].imshow(feature_map, cmap='cividis')
 
@@ -519,7 +733,8 @@ def visualize_clips_with_att_maps_per_reslvl(idx, folder_images, images_path, tr
                                                          device=ref_point.device)).cpu()
 
                         mymarker = axs[i + 1, idx + 1].scatter(centroid_ref_point[0],
-                                                               centroid_ref_point[1], s=80, color='red',
+                                                               centroid_ref_point[1], s=80,
+                                                               color='red',
                                                                marker='x', linewidths=1.4)
                         axs[i + 1, idx + 1].add_artist(mymarker)
                         axs[i + 1, idx + 1].axis('off')

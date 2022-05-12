@@ -4,8 +4,9 @@ For the latter, a Visdom server must be running at `VISDOM_PORT=8090` and `VISDO
 To deactivate Visdom logging set `VISDOM_ON=False`.
 
 ## Train
-We provide configurations files under `configs/deformable_mask_head/` and `configs/devis/` to train Deformable Mask-Head  and DeVIS respectively.
-In order to launch a training you just need to simply specify the number of GPUS using `--nproc_per_node` and the corresponding config file after `--config-file`. For instance, the command for training YT-VIS 2019 model with 4GPUs is as following:
+We provide configurations files under `configs/deformable_mask_head/` and `configs/devis/` to train the Mask-Head  and DeVIS respectively.
+In order to launch a training you just need to simply specify the number of GPUS using `--nproc_per_node` and the corresponding config file after `--config-file`. 
+For instance, the command for training YT-VIS 2019 model with 4GPUs is as following:
 
 ```
 torchrun --nproc_per_node=4 main.py --config-file configs/devis/devis_R_50_YT-19.yaml
@@ -19,12 +20,12 @@ torchrun --nproc_per_node=4 main.py --config-file configs/devis/devis_R_50_YT-19
 
 ## Model zoo
 
-| Dataset        | AP     | AP50   | AP75   | AR1   | AR10   | Training<br/> GPU hours \* | Max GPU <br/>memory    | URL                                                                                                                                               |
-|----------------|--------|--------|--------|-------|--------|----------------------------|------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
-| COCO           | ------ | ------ | ------ | ----- | ------ | ------------------------   | ---------------------- | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/deformable_mask_head/deformable_mask_head_R_50.yaml) <br/>[log]() <br/>[model]() |
-| YouTube-VIS 19 | ------ | ------ | ------ | ----- | ------ | ------------------------   | ---------------------- | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/devis_R_50_YT-19.yaml) <br/>[log]() <br/>[model]()                         |
-| YouTube-VIS 21 | ------ | ------ | ------ | ----- | ------ | ------------------------   | ---------------------- | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/devis_R_50_YT-21.yaml) <br/>[log]() <br/>[model]()                         |
-| OVIS           | 23.2   | 45.2   | 22.5   | 11.8  | 27.9   | 116                        | 24GB                   | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/devis_R_50_OVIS.yaml) <br/>[log](https://vision.in.tum.de/webshare/u/cad/model_zoo/ovis/log.out) <br/>[model](https://vision.in.tum.de/webshare/u/cad/model_zoo/ovis/r50_devis_ovis.zip)                          |
+| Dataset        | AP     | AP50   | AP75   | AR1   | AR10   | Total <br/>batch size  | Training<br/> GPU hours \* | Max GPU <br/>memory    | URL                                                                                                                                               |
+|----------------|--------|--------|--------|-------|--------|------------------------|----------------------------|------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
+| COCO           | ------ | ------ | ------ | ----- | ------ | 14                     | ------------------------   | ---------------------- | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/deformable_mask_head/deformable_mask_head_R_50.yaml) <br/>[log]() <br/>[model]() |
+| YouTube-VIS 19 | ------ | ------ | ------ | ----- | ------ | 4                      | -------------------------  | ---------------------- | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/devis_R_50_YT-19.yaml) <br/>[log]() <br/>[model]()                         |
+| YouTube-VIS 21 | ------ | ------ | ------ | ----- | ------ | 4                      | ------------------------   | ---------------------- | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/devis_R_50_YT-21.yaml) <br/>[log]() <br/>[model]()                         |
+| OVIS           | 23.2   | 45.2   | 22.5   | 11.8  | 27.9   | 4                      | 116                        | 24GB                   | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/devis_R_50_OVIS.yaml) <br/>[log](https://vision.in.tum.de/webshare/u/cad/model_zoo/ovis/log.out) <br/>[model](https://vision.in.tum.de/webshare/u/cad/model_zoo/ovis/r50_devis_ovis.zip)                          |
 
 ## Ablations
 We also provide configuration file to run all the ablation studies presented on Table 1:

@@ -1,16 +1,18 @@
 import random
 import numpy as np
 import cv2
-from torchvision.transforms import Normalize, ToTensor
-from torchvision.transforms import Compose as PyTorchCompose
-from .coco_transforms import RandomContrast, ConvertColor, RandomSaturation, RandomHue, RandomBrightness, RandomLightingNoise, Compose
-from src.util.box_ops import box_xyxy_to_cxcywh, masks_to_boxes
 import warnings
 from pycocotools import mask as coco_mask
-from src.datasets.coco_transforms import get_size
 import torch
 from typing import List
+
+from torchvision.transforms import Normalize, ToTensor
+from torchvision.transforms import Compose as PyTorchCompose
 import torchvision.transforms.functional as F
+
+from .coco_transforms import RandomContrast, ConvertColor, RandomSaturation, RandomHue, \
+    RandomBrightness, RandomLightingNoise, Compose, get_size
+from ..util.box_ops import box_xyxy_to_cxcywh, masks_to_boxes
 
 
 def convert_coco_poly_to_bool_mask_numpy(segmentation, height, width):
@@ -86,8 +88,10 @@ class ConvertCocoPolysToValuedMaskNumpy(object):
         boxes[:, :, 0::2] = boxes[:, :, 0::2].clip(min=0, max=w)
         boxes[:, :, 1::2] = boxes[:, :, 1::2].clip(min=0, max=h)
 
-        target = {"boxes": boxes, "labels": classes, "masks": segmentations, "image_id": torch.tensor([image_id]), "valid": valid, "area": area,
-                  "iscrowd": iscrowd, "orig_size": torch.as_tensor([int(h), int(w)]), "tmp_identifier": tmp_identifier, "clip_instances": clip_instances}
+        target = {"boxes": boxes, "labels": classes, "masks": segmentations,
+                  "image_id": torch.tensor([image_id]), "valid": valid, "area": area,
+                  "iscrowd": iscrowd, "orig_size": torch.as_tensor([int(h), int(w)]),
+                  "tmp_identifier": tmp_identifier, "clip_instances": clip_instances}
 
         return target
 
@@ -228,7 +232,8 @@ class VISToTensorWithPostProcessing:
                     new_bbx = box_xyxy_to_cxcywh(new_bbx)
                     target["boxes"][i] = new_bbx / torch.tensor([w, h, w, h], dtype=torch.float32)
 
-                centroid_yx = torch.mean(target["masks"][i].nonzero().type(torch.float32), dim=0).type(torch.int)
+                centroid_yx = torch.mean(target["masks"][i].nonzero().type(torch.float32),
+                                         dim=0).type(torch.int)
                 centroid = torch.tensor([centroid_yx[1], centroid_yx[0]])
                 target["centroids"][i] = centroid / torch.tensor([w, h])
                 target["area"][i] = area
@@ -253,16 +258,19 @@ class VISResize(object):
 
     def __call__(self, image, target):
         original_shape = image.shape[:2]
-        image = cv2.resize(image, (self.out_size[1], self.out_size[0]), interpolation=cv2.INTER_LINEAR)
+        image = cv2.resize(image, (self.out_size[1], self.out_size[0]),
+                           interpolation=cv2.INTER_LINEAR)
 
         ratios = tuple(float(s) / float(s_orig) for s, s_orig in zip(self.out_size, original_shape))
         ratio_height, ratio_width = ratios
 
         if "boxes" in target:
-            target["boxes"] = target["boxes"] * np.asarray([ratio_width, ratio_height, ratio_width, ratio_height])
+            target["boxes"] = target["boxes"] * np.asarray(
+                [ratio_width, ratio_height, ratio_width, ratio_height])
 
         if "masks" in target:
-            target["masks"] = cv2.resize(target["masks"], (self.out_size[1], self.out_size[0]), interpolation=cv2.INTER_NEAREST)
+            target["masks"] = cv2.resize(target["masks"], (self.out_size[1], self.out_size[0]),
+                                         interpolation=cv2.INTER_NEAREST)
 
         if "area" in target:
             target["area"] = target["area"] * (ratio_width * ratio_height)
@@ -280,7 +288,6 @@ class VISRandomCrop:
     def init_clip_transform(self, **kwargs):
         size = kwargs["size"]
         self.region = compute_region(size, *self.size)
-
 
         kwargs["size"] = self.region[2:]
         kwargs["previousShape_crop"] = size
@@ -424,6 +431,19 @@ class VISTransformsApplier:
         self.transforms = transforms
         self.target_keys = ["masks", "boxes", "labels", "valid", "area"]
 
+    # Allows to remove any of the existing transform on the pipline
+    def remove_transform(self, transform_to_remove):
+        idx = None
+        for i, transform in enumerate(self.transforms):
+            if isinstance(transform, transform_to_remove):
+                idx = i
+                break
+        if idx is None:
+            raise ValueError(f"Selected transform: {transform_to_remove} is not on the current "
+                             f"transform pipeline ")
+
+        self.transforms.pop(idx)
+
     @staticmethod
     def fill_box_non_valid_frames(targets, num_frames):
         num_annots = targets["boxes"].shape[0]
@@ -445,7 +465,8 @@ class VISTransformsApplier:
                     else:
                         new_instance_boxes.append(trajectory_boxes[idx][None])
 
-                targets["boxes"][instance * num_frames: (instance + 1) * num_frames] = torch.cat(new_instance_boxes)
+                targets["boxes"][instance * num_frames: (instance + 1) * num_frames] = torch.cat(
+                    new_instance_boxes)
 
         return targets
 
@@ -456,7 +477,8 @@ class VISTransformsApplier:
         # all_valid = torch.ones(num_frames, dtype=torch.bool)
         for instance in range(num_instances_per_frame):
             # targets["valid"][instance * num_frames: (instance + 1) * num_frames] = all_valid
-            trajectory_labels = targets["labels"][instance * num_frames: (instance + 1) * num_frames]
+            trajectory_labels = targets["labels"][
+                                instance * num_frames: (instance + 1) * num_frames]
             label = trajectory_labels[trajectory_labels.nonzero()[0]].item()
             new_label = torch.full_like(trajectory_labels, label)
             targets["labels"][instance * num_frames: (instance + 1) * num_frames] = new_label
@@ -483,7 +505,8 @@ class VISTransformsApplier:
         valid_indices = []
 
         for instance in range(num_instances_per_frame):
-            if not torch.any(out_targets["valid"][instance * num_frames:(instance + 1) * num_frames]):
+            if not torch.any(
+                    out_targets["valid"][instance * num_frames:(instance + 1) * num_frames]):
                 valid_indices.append(torch.full((num_frames,), 0, dtype=torch.bool))
             else:
                 valid_indices.append(torch.full((num_frames,), 1, dtype=torch.bool))
@@ -517,7 +540,8 @@ class VISTransformsApplier:
 
         targets_keys = self.target_keys + ["centroids"]
         out_images = torch.cat(out_images, dim=0)
-        out_targets = {key: torch.cat([target[key] for target in out_targets], dim=0) for key in targets_keys}
+        out_targets = {key: torch.cat([target[key] for target in out_targets], dim=0) for key in
+                       targets_keys}
 
         # TODO clean this with something similar as init_clip_transform once original valid strategy is clear
         # TODO: clean centroid and leave self.target keys as it was before
@@ -530,6 +554,5 @@ class VISTransformsApplier:
         out_targets["iscrowd"] = targets["iscrowd"]
         out_targets["orig_size"] = targets["orig_size"]
         out_targets["size"] = torch.as_tensor(transforms_kwargs["size"])
-
 
         return out_images, out_targets

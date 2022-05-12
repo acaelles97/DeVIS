@@ -5,6 +5,7 @@ Modified from DETR (https://github.com/facebookresearch/detr)
 import argparse
 import datetime
 import random
+import warnings
 from contextlib import redirect_stdout
 import time
 from pathlib import Path
@@ -49,9 +50,13 @@ def get_args_parser():
 
 
 def sanity_check(cfg):
+    assert cfg.MODEL.LOSS.FOCAL_LOSS, "Softmax classification loss not implemented, " \
+                                      "see src/models/critertion.py loss_labels() "
+    assert cfg.MODEL.LOSS.FOCAL_LOSS
+
     if cfg.MODEL.LOSS.MASK_AUX_LOSS:
         assert min(cfg.MODEL.LOSS.MASK_AUX_LOSS) >= 0 and max(cfg.MODEL.LOSS.MASK_AUX_LOSS) <= 4, \
-            f"Available MODEL.LOSS.MASK_AUX_LOSS levels : [0, 1, 2, 3, 4] "
+            f"Available MODEL.LOSS.MASK_AUX_LOSS levels : [0, 1, 2, 3, 4]"
 
     if cfg.MODEL.LOSS.AUX_LOSS_WEIGHTING:
         assert cfg.MODEL.TRANSFORMER.DECODER_LAYERS == 6, "MODEL.LOSS.AUX_LOSS_WEIGHTING  weights " \
@@ -61,12 +66,13 @@ def sanity_check(cfg):
         assert cfg.MODEL.LOSS.FOCAL_LOSS, "TopK can only be used with FOCAL_LOSS"
     else:
         if cfg.DATASETS.TYPE == 'vis':
-            assert cfg.TEST.NUM_OUT == (
-                    cfg.MODEL.NUM_QUERIES // cfg.MODEL.DEVIS.NUM_FRAMES), \
-                "TEST.NUM_OUT must be equal to number of queries per frame for VIS when not using TopK"
+            if cfg.TEST.NUM_OUT != (cfg.MODEL.NUM_QUERIES // cfg.MODEL.DEVIS.NUM_FRAMES):
+                warnings.warn("TEST.NUM_OUT != to number of queries per frame for DeVIS, "
+                              "automatically setting it")
+
         else:
-            assert cfg.TEST.NUM_OUT == cfg.MODEL.NUM_QUERIES, \
-                "TEST.NUM_OUT must be equal to number of queries when not using TopK"
+            if cfg.TEST.NUM_OUT != cfg.MODEL.NUM_QUERIES:
+                warnings.warn("TEST.NUM_OUT != to number of queries, automatically setting it")
 
     if cfg.DATASETS.TYPE == 'vis':
         assert cfg.MODEL.DEVIS.NUM_FRAMES > 1, "MODEL.DEVIS.NUM_FRAMES must be higher than 1"
@@ -122,7 +128,7 @@ def main(args, cfg):
 
     model_without_ddp = model
     if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
         model_without_ddp = model.module
 
     tracker = None
@@ -259,36 +265,40 @@ def main(args, cfg):
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, cfg.SOLVER.STEPS)
 
     best_val_stats = None
+    start_epoch = cfg.START_EPOCH
     if cfg.MODEL.WEIGHTS:
         if cfg.MODEL.WEIGHTS.startswith('https'):
             checkpoint = torch.hub.load_state_dict_from_url(
                 cfg.MODEL.WEIGHTS, map_location='cpu', check_hash=True)
         else:
             checkpoint = torch.load(cfg.MODEL.WEIGHTS, map_location='cpu')
+
         checkpoint_state_dict = checkpoint['model']
         model_state_dict = model_without_ddp.state_dict()
 
-        if cfg.DATASETS.TYPE == 'vis':
-            checkpoint_state_dict = adapt_weights_devis(checkpoint_state_dict, model_state_dict,
-                                                        cfg.MODEL.NUM_FEATURE_LEVELS,
-                                                        cfg.MODEL.LOSS.FOCAL_LOSS,
-                                                        cfg.SOLVER.DEVIS.FINETUNE_CLASS_LOGITS,
-                                                        cfg.MODEL.DEVIS.NUM_FRAMES,
-                                                        cfg.SOLVER.DEVIS.FINETUNE_QUERY_EMBEDDINGS,
-                                                        cfg.SOLVER.DEVIS.FINETUNE_TEMPORAL_MODULES,
-                                                        cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_CONNECT_ALL_FRAMES,
-                                                        cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_TEMPORAL_WINDOW,
-                                                        cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_N_POINTS_TEMPORAL_FRAME,
-                                                        cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.DEC_N_POINTS_TEMPORAL_FRAME
-                                                        )
+        # We assume that when resuming training no changes need to be made on the weights
+        if not cfg.SOLVER.RESUME_OPTIMIZER:
+            if cfg.DATASETS.TYPE == 'vis':
+                checkpoint_state_dict = adapt_weights_devis(checkpoint_state_dict, model_state_dict,
+                                                            cfg.MODEL.NUM_FEATURE_LEVELS,
+                                                            cfg.MODEL.LOSS.FOCAL_LOSS,
+                                                            cfg.SOLVER.DEVIS.FINETUNE_CLASS_LOGITS,
+                                                            cfg.MODEL.DEVIS.NUM_FRAMES,
+                                                            cfg.SOLVER.DEVIS.FINETUNE_QUERY_EMBEDDINGS,
+                                                            cfg.SOLVER.DEVIS.FINETUNE_TEMPORAL_MODULES,
+                                                            cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_CONNECT_ALL_FRAMES,
+                                                            cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_TEMPORAL_WINDOW,
+                                                            cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_N_POINTS_TEMPORAL_FRAME,
+                                                            cfg.MODEL.DEVIS.DEFORMABLE_ATTENTION.DEC_N_POINTS_TEMPORAL_FRAME
+                                                            )
 
-        else:
-            if cfg.MODEL.SHIFT_CLASS_NEURON:
-                checkpoint_state_dict = shift_class_neurons(checkpoint_state_dict)
+            else:
+                if cfg.MODEL.SHIFT_CLASS_NEURON:
+                    checkpoint_state_dict = shift_class_neurons(checkpoint_state_dict)
 
-            if cfg.MODEL.MASK_ON:
-                checkpoint_state_dict = adapt_weights_mask_head(checkpoint_state_dict,
-                                                                model_state_dict)
+                if cfg.MODEL.MASK_ON:
+                    checkpoint_state_dict = adapt_weights_mask_head(checkpoint_state_dict,
+                                                                    model_state_dict)
 
         missing_keys, unexpected_keys = model_without_ddp.load_state_dict(checkpoint_state_dict,
                                                                           strict=False)
@@ -305,10 +315,10 @@ def main(args, cfg):
                 for c_p, p in zip(checkpoint['optimizer']['param_groups'], param_dicts):
                     c_p['lr'] = p['lr']
                 optimizer.load_state_dict(checkpoint['optimizer'])
-            if 'lr_scheduler' in checkpoint:
-                lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
+            # if 'lr_scheduler' in checkpoint:
+            #     lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             if 'epoch' in checkpoint:
-                cfg.START_EPOCH = checkpoint['epoch'] + 1
+                start_epoch = checkpoint['epoch'] + 1
             if 'best_val_stats' in checkpoint:
                 best_val_stats = checkpoint['best_val_stats']
 
@@ -319,7 +329,7 @@ def main(args, cfg):
 
     print("Start training")
     start_time = time.time()
-    for epoch in range(cfg.START_EPOCH, cfg.SOLVER.EPOCHS + 1):
+    for epoch in range(start_epoch, cfg.SOLVER.EPOCHS + 1):
         if args.distributed:
             sampler_train.set_epoch(epoch)
 

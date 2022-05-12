@@ -9,21 +9,13 @@ import torchvision
 from torch import Tensor
 import torch.nn.functional as F
 
-from src.util.misc import NestedTensor
+from ..util.misc import NestedTensor
 from .matcher import HungarianMatcher
 from .deformable_detr import DefDETRPostProcessor, DeformableDETR
-# To circumvent cyclic import for typing
+# To circumvent cyclic import from typing
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .devis_segmentation import DeVISPostProcessor
-
-ch_dict_en = {
-    "/64": 256,
-    "/32": 2048,
-    "/16": 1024,
-    "/8": 512,
-    "/4": 256,
-}
 
 res_to_idx = {
     "/64": 3,
@@ -61,7 +53,8 @@ class DefDETRSegmBase(nn.Module, ABC):
 
         self.bbox_attention = MultiScaleMHAttentionMap(hidden_dim, hidden_dim, nheads, dropout=0, num_levels=len(self.att_maps_used_res))
 
-        self.mask_head = MaskHeadConv(hidden_dim, feats_dims, nheads, use_deformable_conv, self.att_maps_used_res)
+        num_levels = len(feats_dims) + 1
+        self.mask_head = MaskHeadConv(hidden_dim, feats_dims, nheads, use_deformable_conv, self.att_maps_used_res, num_levels)
 
     def _sanity_check(self):
         init_mask_head_res, init_att_map_res = self.mask_head_used_features[0][0], self.att_maps_used_res[0]
@@ -69,6 +62,14 @@ class DefDETRSegmBase(nn.Module, ABC):
                                                        f"the same. Got {init_mask_head_res} and {init_att_map_res} respectively"
 
     def _get_mask_head_dims(self):
+        ch_dict_en = {
+            "/64": 256,
+            "/32": self.def_detr.backbone.num_channels[3],
+            "/16": self.def_detr.backbone.num_channels[2],
+            "/8": self.def_detr.backbone.num_channels[1],
+            "/4": self.def_detr.backbone.num_channels[0],
+        }
+
         feats_dims = []
         for res, name in self.mask_head_used_features[1:]:
             if name == "backbone":
@@ -325,10 +326,10 @@ class MaskHeadConv(nn.Module):
     Upsampling is done using a FPN approach
     """
 
-    def __init__(self, dim, fpn_dims, nheads, use_deformable_conv, multi_scale_att_maps):
+    def __init__(self, dim, fpn_dims, nheads, use_deformable_conv, multi_scale_att_maps,
+                 num_levels, out_layer=True):
         super().__init__()
 
-        num_levels = len(fpn_dims) + 1
         out_dims = [dim // (2 ** exp) for exp in range(num_levels + 2)]
         in_dims = [dim // (2 ** exp) for exp in range(num_levels + 2)]
         for i in range(len(multi_scale_att_maps)):
@@ -343,12 +344,14 @@ class MaskHeadConv(nn.Module):
         self.lay2 = conv_layer(in_dims[0], out_dims[1], 3, padding=1)
         self.gn2 = torch.nn.GroupNorm(8, out_dims[1])
 
-        for i in range(1, num_levels):
+        for i in range(1, len(fpn_dims) + 1):
             setattr(self, f"lay{i + 2}", conv_layer(in_dims[i], out_dims[i + 1], 3, padding=1))
             setattr(self, f"gn{i + 2}", torch.nn.GroupNorm(8, out_dims[i + 1]))
             setattr(self, f"adapter{i}", Conv2d(fpn_dims[i - 1], out_dims[i], 1, padding=0))
 
-        self.out_lay = conv_layer(out_dims[i + 1], 1, 3, padding=1)
+        self.out_lay = None
+        if out_layer:
+            self.out_lay = conv_layer(out_dims[i + 1], 1, 3, padding=1)
 
     def forward(self, features, bbox_mask, instances_per_batch, expand_func):
 
@@ -370,7 +373,9 @@ class MaskHeadConv(nn.Module):
             x = getattr(self, f"lay{lvl + 3}")(x)
             x = getattr(self, f"gn{lvl + 3}")(x)
             x = F.relu(x)
-        x = self.out_lay(x)
+
+        if self.out_lay is not None:
+            x = self.out_lay(x)
 
         return x
 

@@ -57,6 +57,7 @@ def build_model(num_classes, device, cfg):
         mask_kwargs['defdetr'] = def_detr
         mask_kwargs['num_frames'] = cfg.MODEL.DEVIS.NUM_FRAMES
         mask_kwargs['post_processor'] = postprocessors
+        mask_kwargs["add_3d_conv_head"] = cfg.MODEL.MASK_HEAD.DEVIS.CONV_HEAD_3D
 
         model = DeVIS(**mask_kwargs)
 

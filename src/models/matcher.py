@@ -2,17 +2,16 @@
 Instance Sequence Matching
 Modified from DETR (https://github.com/facebookresearch/detr)
 """
+from typing import List
 import torch
 from scipy.optimize import linear_sum_assignment
 from torch import nn
-
-from src.util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou, multi_giou
-
-INF = 100000000
-from src.util.mask_ops import compute_iou_matrix
 import numpy as np
 import pycocotools.mask as mask_util
-from typing import List
+from ..util.box_ops import box_cxcywh_to_xyxy, generalized_box_iou, multi_giou
+from ..util.mask_ops import compute_iou_matrix
+
+INF = 100000000
 
 
 class DeVISHungarianMatcher(nn.Module):

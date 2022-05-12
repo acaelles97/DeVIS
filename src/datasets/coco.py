@@ -52,8 +52,9 @@ def convert_coco_poly_to_mask(segmentations, height, width):
 
 
 class ConvertCocoPolysToMask(object):
-    def __init__(self, return_masks=False):
+    def __init__(self, return_masks=False, category_map=None):
         self.return_masks = return_masks
+        self.category_map = category_map
 
     def __call__(self, image, target):
         w, h = image.size
@@ -72,9 +73,11 @@ class ConvertCocoPolysToMask(object):
         boxes[:, 0::2].clamp_(min=0, max=w)
         boxes[:, 1::2].clamp_(min=0, max=h)
 
-        classes = [obj["category_id"] for obj in anno]
+        if self.category_map is not None:
+            classes = [self.category_map[obj["category_id"]] for obj in anno]
+        else:
+            classes = [obj["category_id"] for obj in anno]
         classes = torch.tensor(classes, dtype=torch.int64)
-
         if self.return_masks:
             segmentations = [obj["segmentation"] for obj in anno]
             masks = convert_coco_poly_to_mask(segmentations, h, w)
@@ -97,7 +100,11 @@ class ConvertCocoPolysToMask(object):
 
         target = {}
         target["boxes"] = boxes
-        target["labels"] = classes - 1
+
+        if self.category_map is None:
+            target["labels"] = classes - 1
+        else:
+            target["labels"] = classes
 
         if self.return_masks:
             target["masks"] = masks

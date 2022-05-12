@@ -8,8 +8,15 @@
 2. Install packages for Python 3.8:
    1. Install PyTorch 1.11.0 and torchvision 0.12.0 from [here](https://pytorch.org/get-started/locally/). The tested CUDA version is 11.3.0 
    2. `pip3 install -r requirements.txt`
-   3. Install [youtube-vis](https://github.com/youtubevos/cocoapi) api
-   4. Install MultiScaleDeformableAttention package: `python src/models/ops/setup.py build_ext install`
+   3. Install [youtube-vis](https://github.com/youtubevos/cocoapi) api 
+   ```
+   pip install git+https://github.com/youtubevos/cocoapi.git#"egg=pycocotools&subdirectory=PythonAPI
+   ```
+   4. Install MultiScaleDeformableAttention package:
+    ```
+   cd src/models/ops/
+   python setup.py build_ext install
+   ```
 
 Check [this](https://github.com/Epiphqny/VisTR/issues/5) if you experience problems installing youtube-vis api
 
@@ -17,7 +24,7 @@ Check [this](https://github.com/Epiphqny/VisTR/issues/5) if you experience probl
 ## Dataset preparation
 First step is to download and extract each dataset: [COCO](https://cocodataset.org/#home), [YT-19](https://youtube-vos.org/dataset/vis/), [YT-21](https://youtube-vos.org/dataset/vis/) & [OVIS](http://songbai.site/ovis/)
 User must set `DATASETS.DATA_PATH` to the root data path. 
-We refer to [`src/datasets/coco.py`](../src/datasets/coco.py) & [`src/datasets/vis.py`](../src/datasets/vis.py) to modify the expected format for COCO dataset and VIS datasets respectively.
+We refer to [`src/datasets/coco.py`](../src/datasets/coco.py) & [`src/datasets/vis.py`](../src/datasets/vis.py) to modify the expected format for COCO and VIS datasets respectively.
 We expect the following organization:
 ```
 cfg.DATASETS.DATA_PATH/
@@ -28,7 +35,7 @@ cfg.DATASETS.DATA_PATH/
       ├── instances_train2017.json
       └── instances_val2017.json
  
-└── Youtube_VIS/
+└── Youtube_VIS-2019/
   ├── train/
       ├── JPEGImages
       └── train.json 

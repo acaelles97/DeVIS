@@ -6,8 +6,8 @@ import pycocotools.mask as mask_util
 import copy
 import time
 
-from src.util.misc import nested_dict_to_namespace
-from src.util.viz_utils import visualize_tracks_independently, visualize_clips_after_processing, visualize_results_merged
+from ..util.misc import nested_dict_to_namespace
+from ..util.viz_utils import visualize_tracks_independently, visualize_clips_after_processing, visualize_results_merged
 
 
 class Track:

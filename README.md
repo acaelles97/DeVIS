@@ -19,6 +19,7 @@ We further introduce a new image and video instance mask head which exploits mul
 DeVIS benefits from comparatively small memory as well as training time requirements, and achieves state-of-the-art results on the YouTube-VIS 2019 and 2021, as well as the challenging OVIS dataset.
 
 # Results
+Click on the evaulation benchmark you want to see!
 <details><summary>COCO</summary><p>
 
 | Model                                                        | AP   | AP50 | AP75 | APl  | APm  | Aps  | FPS  |
@@ -54,18 +55,21 @@ DeVIS benefits from comparatively small memory as well as training time requirem
 | Ours (T=6, S=4) | 23.2 | 44.0 | 21.7 | 11.8 | 27.9 |
 </p></details>
 
-## Configuration 
-We have been inspired by [detectron2](https://github.com/facebookresearch/detectron2) in order to build our configuration system, based on [YACS](https://github.com/rbgirshick/yacs) . 
+## Configuration
+Our configuration system is based on [YACS](https://github.com/rbgirshick/yacs) (similar as [detectron2](https://github.com/facebookresearch/detectron2)).
 We hope this allows the research community to more easily build upon our method. 
 Refer to `src/config.py` to get an overview of all the configuration options available including how the model is built, training and test options.
 All the default config values correspond to the [Deformable DETR + iterative bounding box refinement](https://github.com/fundamentalvision/Deformable-DETR/blob/main/configs/r50_deformable_detr_plus_iterative_bbox_refinement.sh) model, making easier for the user to understand the changes we have introduced upon it. 
 On the other hand, config values that are unique to DeVIS are set to YT-19 model.
 We use uppercase words (e.g. `MODEL.NUM_QUERIES`) to refer to config parameters.
 
+# Install
+We refer to our [docs/INSTALL.md](docs/INSTALL.md) for detailed installation instructions.
+
 # Train
 We refer to our [docs/TRAIN.md](docs/TRAIN.md) for detailed training instructions.
 
-## Evaluate
+# Evaluate
 To evaluate model's performance, you just need to add the `--eval-only` argument and set `MODEL.WEIGHTS` to the checkpoint path via command line.
 For example, the following command shows how to obtain YT-19 val predictions:
 ```
@@ -76,15 +80,11 @@ We also support multi GPU test, so you only need to set `--nproc_per_node` to th
 torchrun --nproc_per_node=4 main.py --config-file configs/devis/devis_R_50_YT-19.yaml --eval-only MODEL.WEIGHTS /path/to/yt-19_checkpoint_file
 ```
 
-Furthermore, we have added the option to validate several checkpoints by simply pointing `TEST.INPUT_FOLDER` to the output training directory and `TEST.EPOCHS_TO_EVAL` to the epochs you want to validate.
-This allows to easily validate the desired epochs once the training finishes.
+Furthermore, we have added the option to validate several checkpoints once the training finishes by simply pointing `TEST.INPUT_FOLDER` to the output training directory and `TEST.EPOCHS_TO_EVAL` to the epochs you want to validate.
 
-### Visualize results
-We also provide configuration options to save results for visualization (only for DeVIS). 
+## Visualize results
 When `TEST.VIZ.OUT_VIZ_PATH=path/to/save` is specified, the visual results from the .json file will be saved.
-Additionally, `TEST.VIZ.SAVE_CLIP_VIZ` allows saving results from the sub-clips too, being useful to get an idea of the model performance without the clip stitching being involved.
-Finally, `TEST.VIZ.SAVE_MERGED_TRACKS=True` plots all tracks results on the same image (same as figures from the paper). 
-This option requires to properly set `TEST.CLIP_TRACKING.MIN_TRACK_SCORE`, `TEST.CLIP_TRACKING.MIN_FRAME_SCORE` and `TEST.NUM_OUT` for almost each specific video in order to get satisfactory visualization.
+Additionally, `TEST.VIZ.SAVE_CLIP_VIZ` allows saving results from the sub-clips (without the clip tracking being involved). Finally, `TEST.VIZ.SAVE_MERGED_TRACKS=True` plots all tracks on the same image (same as figures from the paper).
 
 We provide an additional [config file](configs/devis/devis_R_50_visualization_YT-21.yaml) that changes thresholds to get more visual appealing results as well as `TEST.VIZ.VIDEO_NAMES` to infer only the specified videos (the ones shown below). 
 The following command shows how to get visual results from YT-19 val set:
@@ -92,7 +92,7 @@ The following command shows how to get visual results from YT-19 val set:
 ```
 python main.py --config-file configs/devis/devis_R_50_visualization_YT-19.yaml --eval-only MODEL.WEIGHTS /path/to/yt-19_checkpoint_file
 ```
-To generate the video, you just need to then enter to the output folder with all the images and use:
+To generate the video, you just need to then enter to the output folder containing all the images and use:
 
 ```
 ffmpeg -framerate 5 -pattern_type glob -i '*.jpg' -c:v libx264 -pix_fmt yuv420p out.mp4
@@ -104,12 +104,13 @@ ffmpeg -framerate 5 -pattern_type glob -i '*.jpg' -c:v libx264 -pix_fmt yuv420p 
 </div>
 
 
-### Attention maps
-We also provide an additional script `visualize_att_maps.py` to save attention maps. 
-It does not involve clip stitching, so only allows visualizing results from each video's sub-clips. 
-Visualization parameters as well as test thresholds and `TEST.NUM_OUT` are taken into consideration for this script, so we recommend using the aforementioned visualization config file.
-We also allow choosing the decoder layer, and wether to merge sampling locations from different resolution into single att map or show them separately. 
-Take a look at script's *args_parse()* for more info. 
+## Attention maps
+We also provide an additional script `visualize_att_maps.py` to generate attention maps.
+We recommend using the aforementioned visualization config file.
+The script allows to choose the decoder layer as well as whether to merge resolutions or not, see  *args_parse()* for more info.
 ```
 python visualize_att_maps.py --config-file configs/devis/devis_R_50_visualization_YT-19.yaml  MODEL.WEIGHTS /path/to/yt-19_checkpoint_file
 ```
+<div align="center">
+    <img src="docs/attention_maps.png" width="800"/>
+</div>

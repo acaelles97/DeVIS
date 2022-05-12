@@ -6,6 +6,8 @@ MODEL:
     USE_MDC: False
     UPSAMPLING_RESOLUTIONS: ['/32']
     USED_FEATURES: [['/32', 'encoded'], ['/16', 'backbone'], ['/8', 'backbone'], ['/4', 'backbone']]
+    DEVIS:
+      CONV_HEAD_3D: True
 
   MATCHER:
     CLASS_COST: 1.0
@@ -32,7 +34,7 @@ SOLVER:
 
 TEST:
   START_EVAL_EPOCH: 3
-  NUM_OUT: 20
+  NUM_OUT: 10
   CLIP_TRACKING:
     USE_BINARY_MASK_IOU: True
     USE_FRAME_AVERAGE_IOU: True

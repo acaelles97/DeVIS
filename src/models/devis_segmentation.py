@@ -1,21 +1,35 @@
 from __future__ import annotations
-from src.util.misc import NestedTensor
+from typing import List
 import torch
 from torch import nn
-from src.util import box_ops
-from .deformable_segmentation import DefDETRSegmBase
+from .deformable_segmentation import DefDETRSegmBase, MaskHeadConv
 from .deformable_detr import DeformableDETR
 from .matcher import DeVISHungarianMatcher
-from typing import List
+from ..util.misc import NestedTensor
+from ..util import box_ops
+
 
 
 class DeVIS(DefDETRSegmBase):
 
-    def __init__(self, defdetr: DeformableDETR, matcher: DeVISHungarianMatcher, mask_head_used_features: List[List[str]], att_maps_used_res: List[str], use_deformable_conv: bool,
-                 post_processor: DeVISPostProcessor, mask_aux_loss: List, num_frames: int):
+    def __init__(self, defdetr: DeformableDETR, matcher: DeVISHungarianMatcher, mask_head_used_features: List[List[str]],
+                 att_maps_used_res: List[str], use_deformable_conv: bool,
+                 post_processor: DeVISPostProcessor, mask_aux_loss: List, num_frames: int, add_3d_conv_head: bool):
 
-        super().__init__(defdetr, matcher, mask_head_used_features, att_maps_used_res, use_deformable_conv, post_processor, mask_aux_loss)
+        super().__init__(defdetr, matcher, mask_head_used_features, att_maps_used_res,
+                         use_deformable_conv, post_processor, mask_aux_loss)
         self.num_frames = num_frames
+
+        # Only used for ablation studies
+        self.conv_head_3d = None
+        if add_3d_conv_head:
+            feats_dims = self._get_mask_head_dims()
+            hidden_dim, nheads = self.def_detr.transformer.d_model, self.def_detr.transformer.nhead
+            num_levels = len(feats_dims)
+            self.mask_head = MaskHeadConv(hidden_dim, feats_dims, nheads, use_deformable_conv,
+                                          self.att_maps_used_res, num_levels, out_layer=False)
+
+            self.conv_head_3d = build_3D_conv_head(hidden_dim // 16)
 
     def _expand_func_mask_head(self, tensor, lengths):
         return tensor.repeat(lengths, 1, 1, 1)
@@ -44,6 +58,11 @@ class DeVIS(DefDETRSegmBase):
         bbox_mask_f = self.bbox_attention(hs_f, memories_att_map_f, mask=masks_att_map)
         bbox_mask_flattened = [bbox_mask.transpose(1, 0).flatten(0, 1) for bbox_mask in bbox_mask_f]
         seg_masks_f = self.mask_head(mask_head_feats_f, bbox_mask_flattened, instances_per_batch=num_trajectories, expand_func=self._expand_func_mask_head)
+        if self.conv_head_3d is not None:
+            seg_masks_f = seg_masks_f.view(
+                (num_trajectories, self.num_frames) + seg_masks_f.shape[1:]).transpose(2, 1)
+            seg_masks_f = self.conv_head_3d(seg_masks_f)[:, 0]
+
         outputs_seg_masks = seg_masks_f.view((num_trajectories, self.num_frames) + seg_masks_f.shape[2:])
         return outputs_seg_masks
 
@@ -143,3 +162,25 @@ class DeVISPostProcessor(nn.Module):
             results["boxes"] = pred_boxes[:video_length]
 
         return query_top_k_indexes, results
+
+
+def build_3D_conv_head(mask_head_hidden_size):
+    return nn.Sequential(
+        nn.Conv3d(mask_head_hidden_size, 12, 3, padding=2, dilation=2),
+        nn.GroupNorm(4, 12),
+        nn.ReLU(),
+        nn.Conv3d(12, 12, 3, padding=2, dilation=2),
+        nn.GroupNorm(4, 12),
+        nn.ReLU(),
+        nn.Conv3d(12, 12, 3, padding=2, dilation=2),
+        nn.GroupNorm(4, 12),
+        nn.ReLU(),
+        nn.Conv3d(12, 1, 1))
+
+
+# class MaskHeadConvAblation(MaskHeadConv):
+#     def __init__(self, dim, fpn_dims, nheads, use_deformable_conv, multi_scale_att_maps):
+#         super().__init__(dim, fpn_dims, nheads, use_deformable_conv, multi_scale_att_maps,
+#                          out_layer=False)
+
+

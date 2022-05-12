@@ -72,6 +72,9 @@ _C.MODEL.MASK_HEAD.UPSAMPLING_RESOLUTIONS = ['/32', '/16', '/8']
 # 'compressed_backbone' features are from the output of the input_proj layer, applied to reduce backbone  features' out channels
 # 'backbone' are features from the backbone
 _C.MODEL.MASK_HEAD.USED_FEATURES = [['/32', 'encoded'], ['/16', 'encoded'], ['/8', 'encoded'], ['/4', 'backbone']]
+# 3D convolutional head to replicate VisTr
+_C.MODEL.MASK_HEAD.DEVIS = CN()
+_C.MODEL.MASK_HEAD.DEVIS.CONV_HEAD_3D = False
 
 
 # ---------------------------------------------------------------------------- #
@@ -159,7 +162,8 @@ _C.DATASETS.TYPE = 'coco'
 _C.DATASETS.DATA_PATH = 'data'
 _C.DATASETS.TRAIN_DATASET = 'train'
 _C.DATASETS.VAL_DATASET = 'val'
-
+_C.DATASETS.DEVIS = CN()
+_C.DATASETS.DEVIS.COCO_JOINT_TRAINING = False
 
 # -----------------------------------------------------------------------------
 # INPUT

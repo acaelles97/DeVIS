@@ -8,17 +8,17 @@
 # ------------------------------------------------------------------------
 
 """
-Deformable DETR model and criterion classes.
+Deformable DETR model
 """
+import copy
 import torch
 import torch.nn.functional as F
 from torch import nn
 import math
 
-from src.util import box_ops
-from src.util.misc import (NestedTensor, nested_tensor_from_tensor_list,
+from ..util import box_ops
+from ..util.misc import (NestedTensor, nested_tensor_from_tensor_list,
                            inverse_sigmoid)
-import copy
 
 
 def _get_clones(module, N):

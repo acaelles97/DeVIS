@@ -15,8 +15,8 @@ from numpy import random as rand
 from PIL import Image
 import cv2
 
-from src.util.box_ops import box_xyxy_to_cxcywh
-from src.util.misc import interpolate
+from ..util.box_ops import box_xyxy_to_cxcywh
+from ..util.misc import interpolate
 
 
 def crop(image, target, region):

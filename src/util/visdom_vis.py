@@ -1,15 +1,7 @@
 import copy
 import logging
-
-import matplotlib.patches as mpatches
-import numpy as np
 import torch
-import torchvision.transforms as T
-from matplotlib import colors
-from matplotlib import pyplot as plt
 from visdom import Visdom
-
-# from .util.plot_utils import fig_to_numpy
 
 logging.getLogger('visdom').setLevel(logging.CRITICAL)
 

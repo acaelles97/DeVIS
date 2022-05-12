@@ -10,7 +10,7 @@
 import torch
 from .deformable_transformer import DeformableTransformer, DeformableTransformerEncoderLayer, DeformableTransformerEncoder, DeformableTransformerDecoderLayer, \
     DeformableTransformerDecoder
-from src.models.ops.modules import TemporalMSDeformAttnEncoder, TemporalMSDeformAttnDecoder
+from .ops.modules import TemporalMSDeformAttnEncoder, TemporalMSDeformAttnDecoder
 
 
 class DeVISTransformer(DeformableTransformer):

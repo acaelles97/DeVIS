@@ -10,8 +10,8 @@ from torch import nn
 from torchvision.models._utils import IntermediateLayerGetter
 from typing import Dict, List
 
-from src.util.misc import NestedTensor, is_main_process
-
+from ..util.misc import NestedTensor, is_main_process
+from .swin_backbone import SwinBackbone
 from .position_encoding import build_position_encoding
 
 
@@ -117,7 +117,12 @@ class Joiner(nn.Sequential):
 
 def build_backbone(cfg):
     position_embedding = build_position_encoding(cfg)
-    train_backbone = cfg.SOLVER.LR_BACKBONE != 0
-    backbone = Backbone(name=cfg.MODEL.BACKBONE, dilation=cfg.MODEL.BACKBONE_DILATION, train_backbone=train_backbone, return_interm_layers=True)
+    if 'swin' in cfg.MODEL.BACKBONE:
+        backbone = SwinBackbone(cfg.MODEL.BACKBONE, False, None)
+    else:
+        train_backbone = cfg.SOLVER.LR_BACKBONE != 0
+        backbone = Backbone(name=cfg.MODEL.BACKBONE, dilation=cfg.MODEL.BACKBONE_DILATION,
+                            train_backbone=train_backbone, return_interm_layers=True)
+
     model = Joiner(backbone, position_embedding)
     return model

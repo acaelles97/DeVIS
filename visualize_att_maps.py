@@ -19,41 +19,36 @@ from src.models import build_model
 from src.config import get_cfg_defaults
 from main import sanity_check
 from src.models.tracker import Tracker, Track, encode_mask
-from src.util.att_maps_viz import visualize_clips_with_att_maps_per_reslvl, visualize_clips_with_att_maps_merged_res
-
-
-att_maps_config = {
-    "merge_resolution": 1,
-    "layer_used": 5,
-    "used_resolution": [0, 1, 2, 3],
-}
-
+from src.util.att_maps_viz import visualize_clips_with_att_maps_per_reslvl, \
+    visualize_clips_with_att_maps_merged_res_v2, create_masks
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser('DeVIS argument parser', add_help=True)
-    parser.add_argument('--merge_resolution',
+    parser = argparse.ArgumentParser('DeVIS argument parser', add_help=False)
+    parser.add_argument('--merge-resolution',
                         help="Allows converting all sampling location from "
-                                                   "each resolution level to the same one.",
+                             "each resolution level to the same one.",
                         choices=[0, 1, 2, 3],
+                        type=int,
                         default=None)
 
-    parser.add_argument('--layer_used',
+    parser.add_argument('--layer-used',
                         help="Allows selecting the layer in which visualizing the attention maps",
                         choices=[0, 1, 2, 3, 4, 5],
+                        type=int,
                         default=5)
 
-    parser.add_argument('--used_resolution',
+    parser.add_argument('--used-resolution',
                         help="If merge_resolution=None, allows selecting the resolution to save attention maps",
                         choices=[0, 1, 2, 3], default=1)
-
 
     parser.add_argument('--config-file', help="Run test only")
     parser.add_argument('--eval-only', action='store_true', help="Run test only")
 
     # distributed training parameters
     parser.add_argument('--world-size', default=1, type=int, help='number of distributed processes')
-    parser.add_argument('--dist-url', default='env://', help='url used to set up distributed training')
+    parser.add_argument('--dist-url', default='env://',
+                        help='url used to set up distributed training')
     parser.add_argument('--device', default='cuda', help='device to use for training / testing')
 
     parser.add_argument(
@@ -69,13 +64,17 @@ def get_args_parser():
     return parser
 
 
-# TODO: Implement Attention maps visualization when MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_CONNECT_ALL_FRAME = False
+# TODO: Implement Attention maps visualization when
+#  MODEL.DEVIS.DEFORMABLE_ATTENTION.ENC_CONNECT_ALL_FRAME = False
 class TrackerAttMaps(Tracker):
 
-    def __init__(self, model: torch.nn.Module, hungarian_matcher, tracker_cfg: dict, att_maps_cfg: dict, visualization_cfg: dict, focal_loss: bool, num_frames: int, overlap_window: int,
+    def __init__(self, model: torch.nn.Module, hungarian_matcher, tracker_cfg: dict,
+                 att_maps_cfg: dict, visualization_cfg: dict, focal_loss: bool, num_frames: int,
+                 overlap_window: int,
                  use_top_k: bool, num_workers: int):
 
-        super().__init__(model, hungarian_matcher, tracker_cfg, visualization_cfg, focal_loss, num_frames, overlap_window, use_top_k, num_workers)
+        super().__init__(model, hungarian_matcher, tracker_cfg, visualization_cfg, focal_loss,
+                         num_frames, overlap_window, use_top_k, num_workers)
         self.att_maps_cfg = utils.nested_dict_to_namespace(att_maps_cfg)
 
     def process_masks(self, start_idx, idx, tgt_size, masks):
@@ -83,12 +82,15 @@ class TrackerAttMaps(Tracker):
         num_masks = masks.shape[0]
         for t in range(num_masks):
             mask = masks[t]
-            mask = F.interpolate(mask[None, None], tgt_size, mode="bilinear", align_corners=False).detach().sigmoid()[0, 0]
+            mask = F.interpolate(mask[None, None], tgt_size, mode="bilinear",
+                                 align_corners=False).detach().sigmoid()[0, 0]
             processed_masks.append(encode_mask(mask))
 
         return processed_masks
 
-    def parse_att_maps_to_tracks(self, tracks, topk_idxs, merge_resolution, spatial_shapes, init_ref_point, inter_ref_points, sampling_locations, temporal_sampling_locations, attn_weights, temporal_attn_weights):
+    def parse_att_maps_to_tracks(self, tracks, topk_idxs, merge_resolution, spatial_shapes,
+                                 init_ref_point, inter_ref_points, sampling_locations,
+                                 temporal_sampling_locations, attn_weights, temporal_attn_weights):
         if isinstance(self.model, torch.nn.parallel.DistributedDataParallel):
             model_without_ddp = self.model.module
         else:
@@ -100,29 +102,37 @@ class TrackerAttMaps(Tracker):
         sampling_offsets = torch.cat(sampling_locations, dim=0)
         coordinates_lvl_res_factor = torch.flip(spatial_shapes, dims=(1,))
         if merge_resolution is not None:
-            coordinates_lvl_res_factor = coordinates_lvl_res_factor[merge_resolution].repeat(spatial_shapes.shape[0], 1)
+            coordinates_lvl_res_factor = coordinates_lvl_res_factor[merge_resolution].repeat(
+                spatial_shapes.shape[0], 1)
 
-        sampling_locations = sampling_offsets[:, topk_idxs] * coordinates_lvl_res_factor[None, None, None, :, None]
+        sampling_locations = sampling_offsets[:, topk_idxs] * coordinates_lvl_res_factor[None, None,
+                                                              None, :, None]
 
-        temporal_sampling_offsets = torch.cat(temporal_sampling_locations, dim=0).unflatten(3, [t_window, n_levels])
-        temporal_sampling_locations = temporal_sampling_offsets[:, topk_idxs] * coordinates_lvl_res_factor[None, None, None, None, :, None]
+        temporal_sampling_offsets = torch.cat(temporal_sampling_locations, dim=0).unflatten(3, [
+            t_window, n_levels])
+        temporal_sampling_locations = temporal_sampling_offsets[:,
+                                      topk_idxs] * coordinates_lvl_res_factor[None, None, None,
+                                                   None, :, None]
 
         attn_weights = attn_weights[:, topk_idxs]
-        temporal_attn_weights = temporal_attn_weights.unflatten(3, [t_window, n_levels])[:, topk_idxs]
+        temporal_attn_weights = temporal_attn_weights.unflatten(3, [t_window, n_levels])[:,
+                                topk_idxs]
 
-        if self.att_maps_cfg.layer_used == 0:
+        if self.att_maps_cfg.layer == 0:
             ref_points = init_ref_point[0].sigmoid()
         else:
-            ref_points = inter_ref_points[self.att_maps_cfg.layer_used - 1, 0]
+            ref_points = inter_ref_points[self.att_maps_cfg.layer - 1, 0]
 
-        ref_points = ref_points.reshape([model_without_ddp.num_frames, embd_per_frame, ref_points.shape[-1]])[:, topk_idxs]
+        ref_points = ref_points.reshape(
+            [model_without_ddp.num_frames, embd_per_frame, ref_points.shape[-1]])[:, topk_idxs]
 
         for i, track in enumerate(tracks):
             # TODO: This round should be replaced by proper interpolation of corresponding pixels
             track.curr_position = torch.round(sampling_locations[:, i]).type(torch.long)
             track.curr_att_weights = attn_weights[:, i]
 
-            track.temporal_positions = torch.round(temporal_sampling_locations[:, i]).type(torch.long)
+            track.temporal_positions = torch.round(temporal_sampling_locations[:, i]).type(
+                torch.long)
             track.temporal_att_weights = temporal_attn_weights[:, i]
             track.spatial_shapes = spatial_shapes
             track.ref_point = ref_points[:, i]
@@ -149,7 +159,8 @@ class TrackerAttMaps(Tracker):
             model_without_ddp.def_detr.transformer.reference_points.register_forward_hook(
                 lambda self, input, output: init_ref_point.append(output)
             ),
-            model_without_ddp.def_detr.transformer.decoder.layers[self.att_maps_cfg.layer_used].cross_attn.register_forward_hook(
+            model_without_ddp.def_detr.transformer.decoder.layers[
+                self.att_maps_cfg.layer].cross_attn.register_forward_hook(
                 lambda self, input, output: raw_deformable_attention.append(output[1:])
             ),
             model_without_ddp.def_detr.transformer.decoder.register_forward_hook(
@@ -165,30 +176,41 @@ class TrackerAttMaps(Tracker):
             results = self.model(video_clip.squeeze(0), video_info)
             init_ref_point = init_ref_point[0]
             inter_ref_points = inter_ref_points[0]
-            sampling_offsets, temporal_sampling_offsets, attn_weights, temporal_attn_weights = raw_deformable_attention[0]
+            sampling_offsets, temporal_sampling_offsets, attn_weights, temporal_attn_weights = \
+            raw_deformable_attention[0]
 
-            pred_scores, pred_classes, pred_boxes, pred_masks, pred_center_points = results["scores"], results["labels"], results["boxes"], results["masks"], results[
-                "center_points"]
+            pred_scores, pred_classes, pred_boxes, pred_masks, pred_center_points = results["scores"], \
+                                                                                    results["labels"], results["boxes"], \
+                                                                                    results["masks"], results["center_points"]
             detected_instances = pred_scores.shape[1]
 
             start_idx = 0 if idx != len(video_loader) - 1 else video.last_real_idx
-            clip_tracks = [Track(track_id, clip_length, start_idx) for track_id in range(detected_instances)]
+            clip_tracks = [Track(track_id, clip_length, start_idx) for track_id in
+                           range(detected_instances)]
 
             processed_masks_dict = {}
 
             for i, track in enumerate(clip_tracks):
                 mask_id = results['inverse_idxs'][i].item()
                 if mask_id not in processed_masks_dict.keys():
-                    processed_masks_dict[mask_id] = self.process_masks(start_idx, idx, video.original_size, pred_masks[:, mask_id])
+                    processed_masks_dict[mask_id] = self.process_masks(start_idx, idx,
+                                                                       video.original_size,
+                                                                       pred_masks[:, mask_id])
 
                 cat_track = pred_classes[0, i].item()
                 if cat_track not in clip_tracks_category_dict:
                     clip_tracks_category_dict[cat_track] = []
 
                 clip_tracks_category_dict[cat_track].append(i)
-                track.update(pred_scores[:, i], pred_classes[:, i], pred_boxes[:, i], processed_masks_dict[mask_id], pred_center_points[:, i], mask_id)
+                track.update(pred_scores[:, i], pred_classes[:, i], pred_boxes[:, i],
+                             processed_masks_dict[mask_id], pred_center_points[:, i], mask_id)
 
-            self.parse_att_maps_to_tracks(clip_tracks, results["top_k_idxs"], self.att_maps_cfg.merge_resolution, results['spatial_shapes'], init_ref_point, inter_ref_points, sampling_offsets, temporal_sampling_offsets, attn_weights, temporal_attn_weights)
+            self.parse_att_maps_to_tracks(clip_tracks, results["top_k_idxs"],
+                                          self.att_maps_cfg.merge_resolution,
+                                          results['spatial_shapes'], init_ref_point,
+                                          inter_ref_points, sampling_offsets,
+                                          temporal_sampling_offsets, attn_weights,
+                                          temporal_attn_weights)
 
             if self.tracker_cfg.track_min_detection_score != 0:
                 for track in clip_tracks:
@@ -198,21 +220,34 @@ class TrackerAttMaps(Tracker):
             clips_to_show = [track for i, track in enumerate(clip_tracks) if keep[i]]
 
             if self.tracker_cfg.track_min_score != 0:
-                keep = [track.mean_score() > self.tracker_cfg.track_min_score for track in clips_to_show]
+                keep = [track.mean_score() > self.tracker_cfg.track_min_score for track in
+                        clips_to_show]
                 clips_to_show = [track for i, track in enumerate(clips_to_show) if keep[i]]
 
             for track in clips_to_show:
                 track.encode_all_masks()
                 track.process_centroid(video.original_size)
+
             if self.att_maps_cfg.merge_resolution is None:
-                visualize_clips_with_att_maps_per_reslvl(idx, video.images_folder, video.video_clips[idx][:clip_length], clips_to_show, self.att_maps_cfg.layer_used,
-                                              self.att_maps_cfg.used_resolution, out_path=self.visualization_cfg.out_viz_path, class_name=cat_names)
+                visualize_clips_with_att_maps_per_reslvl(idx, video.images_folder,
+                                                         video.video_clips[idx][:clip_length],
+                                                         clips_to_show,
+                                                         self.att_maps_cfg.layer,
+                                                         self.att_maps_cfg.used_resolution,
+                                                         out_path=self.visualization_cfg.out_viz_path,
+                                                         class_name=cat_names)
             else:
-                visualize_clips_with_att_maps_merged_res(idx, video.images_folder, video.video_clips[idx][:clip_length], clips_to_show, self.att_maps_cfg.layer_used,
-                                              self.att_maps_cfg.merge_resolution, out_path=self.visualization_cfg.out_viz_path, class_name=cat_names)
+                visualize_clips_with_att_maps_merged_res_v2(idx, video.images_folder,
+                                                            video.video_clips[idx][:clip_length],
+                                                            clips_to_show,
+                                                            self.att_maps_cfg.layer,
+                                                            self.att_maps_cfg.merge_resolution,
+                                                            out_path=self.visualization_cfg.out_viz_path,
+                                                            class_name=cat_names)
 
         for hook in hooks:
             hook.remove()
+
 
 @torch.no_grad()
 def run_demo(args, cfg):
@@ -245,12 +280,12 @@ def run_demo(args, cfg):
         model=model,
         hungarian_matcher=None,
         tracker_cfg={
-        "per_class_matching": cfg.TEST.CLIP_TRACKING.PER_CLASS_MATCHING,
-        "track_min_detection_score": cfg.TEST.CLIP_TRACKING.MIN_FRAME_SCORE,
-        "track_min_score": cfg.TEST.CLIP_TRACKING.MIN_TRACK_SCORE,
-        "track_min_detections": cfg.TEST.CLIP_TRACKING.MIN_DETECTIONS,
-        "final_class_policy": cfg.TEST.CLIP_TRACKING.FINAL_CLASS_POLICY,
-        "final_score_policy": cfg.TEST.CLIP_TRACKING.FINAL_SCORE_POLICY,
+            "per_class_matching": cfg.TEST.CLIP_TRACKING.PER_CLASS_MATCHING,
+            "track_min_detection_score": cfg.TEST.CLIP_TRACKING.MIN_FRAME_SCORE,
+            "track_min_score": cfg.TEST.CLIP_TRACKING.MIN_TRACK_SCORE,
+            "track_min_detections": cfg.TEST.CLIP_TRACKING.MIN_DETECTIONS,
+            "final_class_policy": cfg.TEST.CLIP_TRACKING.FINAL_CLASS_POLICY,
+            "final_score_policy": cfg.TEST.CLIP_TRACKING.FINAL_SCORE_POLICY,
         },
         num_workers=cfg.NUM_WORKERS,
         use_top_k=cfg.TEST.USE_TOP_K,
@@ -262,7 +297,11 @@ def run_demo(args, cfg):
             "save_clip_viz": cfg.TEST.VIZ.SAVE_CLIP_VIZ,
             "merge_tracks": cfg.TEST.VIZ.SAVE_MERGED_TRACKS,
         },
-        att_maps_cfg=att_maps_config
+        att_maps_cfg={
+            "merge_resolution": args.merge_resolution,
+            "layer_used": args.layer_used,
+            "used_resolution": args.used_resolution,
+        }
     )
 
     n_total_params = sum(p.numel() for p in model.parameters())
@@ -273,11 +312,11 @@ def run_demo(args, cfg):
     else:
         sampler_val = torch.utils.data.SequentialSampler(dataset_val)
 
-    data_loader_val = DataLoader(dataset_val, cfg.SOLVER.BATCH_SIZE, sampler=sampler_val, collate_fn=utils.val_collate if cfg.DATASETS.TYPE == 'vis' else utils.collate_fn,
+    data_loader_val = DataLoader(dataset_val, cfg.SOLVER.BATCH_SIZE, sampler=sampler_val,
+                                 collate_fn=utils.val_collate if cfg.DATASETS.TYPE == 'vis' else utils.collate_fn,
                                  num_workers=cfg.NUM_WORKERS)
 
-    output_dir = Path(cfg.OUTPUT_DIR)
-    out_folder_name = cfg.TEST.SAVE_PATH
+
     resume_state_dict = torch.load(cfg.MODEL.WEIGHTS, map_location=device)['model']
     model_without_ddp.load_state_dict(resume_state_dict, strict=True)
     selected_videos = False
@@ -292,10 +331,8 @@ def run_demo(args, cfg):
 
 
 if __name__ == "__main__":
-    # assert cfg.DATASETS.TYPE == 'vis'
-    # assert not cfg.TEST.INPUT_FOLDER
-
-    parser = argparse.ArgumentParser('DeVIS attention maps demo script', parents=[get_args_parser()])
+    parser = argparse.ArgumentParser('DeVIS attention maps demo script',
+                                     parents=[get_args_parser()])
     args_ = parser.parse_args()
 
     cfg_ = get_cfg_defaults()

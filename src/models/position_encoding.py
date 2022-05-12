@@ -6,7 +6,7 @@ import math
 import torch
 from torch import nn
 from torch.nn.init import normal_
-from src.util.misc import NestedTensor
+from ..util.misc import NestedTensor
 
 
 class PositionEmbeddingSpatialTemporalSine(nn.Module):

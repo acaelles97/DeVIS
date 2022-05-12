@@ -10,12 +10,12 @@ import json
 import os
 from PIL import Image
 import cv2
-from .vis_transforms import VISTransformsApplier, ConvertCocoPolysToValuedMaskNumpy
-import src.datasets.vis_transforms as VisT
+from . import vis_transforms as VisT
 
 
 class VISTrainDataset:
-    def __init__(self, ann_file: str, img_folder: str, transforms: VISTransformsApplier, num_frames: int,
+    def __init__(self, ann_file: str, img_folder: str, transforms: VisT.VISTransformsApplier,
+                 num_frames: int,
                  sample_each_frame: bool, focal_loss: bool):
 
         self.img_folder = img_folder
@@ -24,7 +24,7 @@ class VISTrainDataset:
         self.ann_file = ann_file
         self._transforms = transforms
         self.num_frames = num_frames
-        self.prepare = ConvertCocoPolysToValuedMaskNumpy()
+        self.prepare = VisT.ConvertCocoPolysToValuedMaskNumpy()
         self.ytvos = YTVOS(ann_file)
         self.cat_ids = self.ytvos.getCatIds()
         self.vid_ids = self.ytvos.getVidIds()
@@ -38,7 +38,8 @@ class VISTrainDataset:
         if not sample_each_frame:
             for idx, vid_info in enumerate(self.vid_infos):
                 if vid_info["length"] < self.num_frames:
-                    # Length video shorter than num_frames: We introduce padding as we do not want to ignore this clip
+                    # Length video shorter than num_frames: We introduce padding as we do not want
+                    # to ignore this clip
                     self.img_ids.append((idx, 0))
                     continue
                 for frame_id in range(len(vid_info['filenames'])):
@@ -73,7 +74,8 @@ class VISTrainDataset:
             raw_indices = raw_indices[:self.num_frames]
 
         for j in range(self.num_frames):
-            img_path = os.path.join(str(self.img_folder), self.vid_infos[vid]['file_names'][frame_id - raw_indices[j]])
+            img_path = os.path.join(str(self.img_folder),
+                                    self.vid_infos[vid]['file_names'][frame_id - raw_indices[j]])
             img.append(cv2.imread(img_path))
 
         ann_ids = self.ytvos.getAnnIds(vidIds=[vid_id])
@@ -100,7 +102,8 @@ class VISTrainDataset:
 
 class VideoClip(torch.utils.data.dataset.Dataset):
 
-    def __init__(self, images_folder, video_id, video_clips, original_size, last_real_idx, real_video_length, transform,
+    def __init__(self, images_folder, video_id, video_clips, original_size, last_real_idx,
+                 real_video_length, transform,
                  final_video_length, cat_names):
         self.video_id = video_id
         self.video_clips = video_clips
@@ -125,6 +128,7 @@ class VideoClip(torch.utils.data.dataset.Dataset):
         img = torch.cat(clip_imgs_set, 0)
         return img
 
+
 class VISValDataset(torch.utils.data.dataset.Dataset):
 
     def __init__(self, ann_file, images_folder, transforms, max_clip_length, stride):
@@ -133,7 +137,8 @@ class VISValDataset(torch.utils.data.dataset.Dataset):
         self.max_clip_length = max_clip_length
         self.overlap_window = max_clip_length - stride
 
-        self.has_gt = "annotations" in self.annotations and self.annotations["annotations"] is not None
+        self.has_gt = "annotations" in self.annotations and self.annotations[
+            "annotations"] is not None
 
         self.cat_names = {cat["id"]: cat["name"] for cat in self.annotations["categories"]}
         self.cat_names[0] = "Bkg"
@@ -206,10 +211,11 @@ class VISValDataset(torch.utils.data.dataset.Dataset):
                 video_clips.append(last_video_clip)
 
             original_size = (videos[i]['height'], videos[i]['width'])
-            parsed_videos.append(VideoClip(video_id=id_, video_clips=video_clips, last_real_idx=last_real_idx,
-                                           original_size=original_size, real_video_length=real_video_length,
-                                           transform=transforms, images_folder=images_folder,
-                                           final_video_length=final_video_length, cat_names=self.cat_names))
+            parsed_videos.append(
+                VideoClip(video_id=id_, video_clips=video_clips, last_real_idx=last_real_idx,
+                          original_size=original_size, real_video_length=real_video_length,
+                          transform=transforms, images_folder=images_folder,
+                          final_video_length=final_video_length, cat_names=self.cat_names))
 
         return parsed_videos
 
@@ -266,7 +272,7 @@ def make_train_vis_transforms(out_scale, multi_scale_training, create_bbx_from_m
             VisT.VISToTensorWithPostProcessing(create_bbx_from_mask),
         ]
 
-    return VISTransformsApplier(transforms)
+    return VisT.VISTransformsApplier(transforms)
 
 
 def make_val_vis_transforms(val_width, max_size):
@@ -284,16 +290,24 @@ def build(image_set, cfg):
     assert root.exists(), f'provided Data path {root} does not exist'
 
     PATHS = {
-        "yt_vis_train_19": ((root / "Youtube_VIS/train/JPEGImages", root / "Youtube_VIS/train/" / 'train.json'), 40),
-        "yt_vis_val_19": ((root / "Youtube-VOS/valid/JPEGImages", root / "Youtube_VIS/valid/" / "valid.json"), 40),
-        "yt_vis_train_21": ((root / "Youtube_VIS-2021/train/JPEGImages", root / "Youtube_VIS-2021/train/" / 'instances.json'), 40),
-        "yt_vis_val_21": ((root / "Youtube_VIS-2021/valid/JPEGImages", root / "Youtube_VIS-2021/valid/" / 'instances.json'), 40),
+        "yt_vis_train_19": ((root / "Youtube_VIS-2019/train/JPEGImages",
+                             root / "Youtube_VIS-2019/train/" / 'train.json'), 40),
+        "yt_vis_val_19": ((root / "Youtube_VIS-2019/valid/JPEGImages",
+                           root / "Youtube_VIS-2019/valid/" / "valid.json"), 40),
+        "yt_vis_train_21": ((root / "Youtube_VIS-2021/train/JPEGImages",
+                             root / "Youtube_VIS-2021/train/" / 'instances.json'), 40),
+        "yt_vis_val_21": ((root / "Youtube_VIS-2021/valid/JPEGImages",
+                           root / "Youtube_VIS-2021/valid/" / 'instances.json'), 40),
         "ovis_train": ((root / "OVIS/train/", root / "OVIS/" / "annotations_train.json"), 25),
         "ovis_val": ((root / "OVIS/valid/", root / "OVIS/" / "annotations_valid.json"), 25),
 
         # For debug purposes
-        "mini_train": ((root / "Youtube_VIS/train/JPEGImages", root / "Youtube_VIS/train/" / 'mini_train.json'), 40),
-        "mini_val": ((root / "Youtube_VIS/valid/JPEGImages", root / "Youtube_VIS/valid/" / 'mini_valid.json'), 40),
+        "mini_train": (
+        (root / "Youtube_VIS/train/JPEGImages", root / "Youtube_VIS/train/" / 'mini_train.json'),
+        40),
+        "mini_val": (
+        (root / "Youtube_VIS/valid/JPEGImages", root / "Youtube_VIS/valid/" / 'mini_valid.json'),
+        40),
 
     }
 
@@ -304,10 +318,15 @@ def build(image_set, cfg):
     assert os.path.isfile(ann_file), f"Provided VIS annotations file doesn't exist {ann_file}"
 
     if image_set == "TRAIN":
-        transforms = make_train_vis_transforms(cfg.INPUT.SCALE_FACTOR_TRAIN, cfg.INPUT.DEVIS.MULTI_SCALE_TRAIN,  cfg.INPUT.DEVIS.CREATE_BBX_FROM_MASK)
-        dataset = VISTrainDataset(ann_file, img_folder, transforms, cfg.MODEL.DEVIS.NUM_FRAMES, cfg.INPUT.DEVIS.SAMPLE_EACH_FRAME, cfg.MODEL.LOSS.FOCAL_LOSS)
+        transforms = make_train_vis_transforms(cfg.INPUT.SCALE_FACTOR_TRAIN,
+                                               cfg.INPUT.DEVIS.MULTI_SCALE_TRAIN,
+                                               cfg.INPUT.DEVIS.CREATE_BBX_FROM_MASK)
+        dataset = VISTrainDataset(ann_file, img_folder, transforms,
+                                  cfg.MODEL.DEVIS.NUM_FRAMES, cfg.INPUT.DEVIS.SAMPLE_EACH_FRAME,
+                                  cfg.MODEL.LOSS.FOCAL_LOSS)
     else:
         transform = make_val_vis_transforms(cfg.INPUT.MIN_SIZE_TEST, cfg.INPUT.MAX_SIZE_TEST)
-        dataset = VISValDataset(ann_file, img_folder, transform, cfg.MODEL.DEVIS.NUM_FRAMES, cfg.TEST.CLIP_TRACKING.STRIDE)
+        dataset = VISValDataset(ann_file, img_folder, transform, cfg.MODEL.DEVIS.NUM_FRAMES,
+                                cfg.TEST.CLIP_TRACKING.STRIDE)
 
     return dataset, num_classes

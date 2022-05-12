@@ -6,8 +6,8 @@ import torch.nn.functional as F
 from torch import nn
 
 from .deformable_segmentation import sigmoid_focal_loss, dice_loss
-from src.util import box_ops
-from src.util.misc import (nested_tensor_from_tensor_list,
+from ..util import box_ops
+from ..util.misc import (nested_tensor_from_tensor_list,
                            accuracy, get_world_size, interpolate,
                            is_dist_avail_and_initialized)
 
