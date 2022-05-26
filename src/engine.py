@@ -190,7 +190,8 @@ def evaluate_coco(model: torch.nn.Module, criterion: torch.nn.Module, postproces
         stats['PQ_st'] = panoptic_res["Stuff"]
 
     eval_stats = stats['coco_eval_bbox'][:3]
-
+    if 'coco_eval_masks' in stats:
+        eval_stats.extend(stats['coco_eval_masks'][:3])
     # VIS
     if visualizers:
         vis_epoch = visualizers['epoch_metrics']

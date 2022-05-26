@@ -22,10 +22,14 @@ DeVIS benefits from comparatively small memory as well as training time requirem
 Click on the evaulation benchmark you want to see!
 <details><summary>COCO</summary><p>
 
-| Model                                                        | AP   | AP50 | AP75 | APl  | APm  | Aps  | FPS  |
-|--------------------------------------------------------------|------|------|------|------|------|------|------|
-| [Mask R-CNN](https://github.com/facebookresearch/detectron2) | 37.2 | 58.5 | 39.8 | 53.3 | 39.4 | 18.6 | 21.4 |
-| Ours                                                         | 38.0 | 61.4 | 40.1 | 59.8 | 41.4 | 17.9 | 12.1 |
+| Model                                                        | Backbone | box AP | mask AP | AP50 | AP75 | APl  | APm  | Aps  | FPS  |
+|--------------------------------------------------------------|----------|--------|---------|------|------|------|------|------|------|
+| [Mask R-CNN](https://github.com/facebookresearch/detectron2) | R50      | 41.0   | 37.2    | 58.5 | 39.8 | 53.3 | 39.4 | 18.6 | 21.4 |
+| Ours                                                         | R50      | 46.3   | 38.0    | 61.4 | 40.1 | 59.8 | 41.4 | 17.9 | 12.1 |
+| [Mask R-CNN](https://github.com/facebookresearch/detectron2) | R101     | 42.9   | 38.6    | 60.4 | 41.3 | 55.3 | 41.3 | 19.4 | -    |
+| Ours                                                         | R101     | 47.9   | 39.9    | 63.0 | 42.1 | 61.5 | 43.9 | 19.9 | -    |
+| Ours                                                         | SwinL    | 46.3   | 38.0    | 61.4 | 40.1 | 59.8 | 41.4 | 17.9 | -    |
+
 </p></details>
 
 <details><summary>YouTube-VIS-2019</summary><p>
@@ -107,10 +111,15 @@ ffmpeg -framerate 5 -pattern_type glob -i '*.jpg' -c:v libx264 -pix_fmt yuv420p 
 ## Attention maps
 We also provide an additional script `visualize_att_maps.py` to generate attention maps.
 We recommend using the aforementioned visualization config file.
-The script allows to choose the decoder layer as well as whether to merge resolutions or not, see  *args_parse()* for more info.
+The script allows to choose the decoder layer as well as whether to merge resolutions or not (see  *args_parse()* for more info).
 ```
 python visualize_att_maps.py --config-file configs/devis/devis_R_50_visualization_YT-19.yaml  MODEL.WEIGHTS /path/to/yt-19_checkpoint_file
 ```
 <div align="center">
     <img src="docs/attention_maps.png" width="800"/>
 </div>
+
+## TODO
+- [ ] ResNet-101 COCO and VIS results
+- [ ] Swin-L COCO and VIS results
+- [ ] COCO joint training on YT-19 dataset results

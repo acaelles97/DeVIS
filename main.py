@@ -315,8 +315,8 @@ def main(args, cfg):
                 for c_p, p in zip(checkpoint['optimizer']['param_groups'], param_dicts):
                     c_p['lr'] = p['lr']
                 optimizer.load_state_dict(checkpoint['optimizer'])
-            # if 'lr_scheduler' in checkpoint:
-            #     lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
+            if 'lr_scheduler' in checkpoint:
+                lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             if 'epoch' in checkpoint:
                 start_epoch = checkpoint['epoch'] + 1
             if 'best_val_stats' in checkpoint:
