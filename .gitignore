@@ -3,3 +3,4 @@
 *.xml
 *.pth
 **/__pycache__/**
+/weights/

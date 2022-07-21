@@ -36,17 +36,17 @@ torchrun --nproc_per_node=4 main.py --config-file configs/devis/YT-19/devis_R_50
 ## Ablations
 We also provide configuration file to run all the ablation studies presented on Table 1:
 
-| Method                        | Clip size | K_temp | Features<br/> scales | AP    | Training<br/> GPU hours\* | Max GPU <br/>memory | URL                                                                                                                        |
-|-------------------------------|----------|--------|----------------------|-------|---------------------------|---------------------|----------------------------------------------------------------------------------------------------------------------------|
-| Deformable VisTR              | 36       | 4      | 1                    | 34.2  | 190                       | 10GB                | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation0_deformable_vistr.yaml)    |
-| Deformable VisTR              | 36       | 0      | 1                    | 35.3  | 150                       | 7GB                 | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation1_deformable_vistr_wo_temp_conn.yaml) |
-| Deformable VisTR              | 6        | 0      | 1                    | 32.4  | 40                        | 2GB                 | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation2-5_single-scale_wo_temp_conn.yaml)   |
-| DeVIS                         | 6        | 4      | 1                    | 34.0  | 46                        | 3GB                 | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation2_single-scale.yaml)                  |
-| +increase spatial inputs      | 6        | 4      | 4                    | 35.9  | 104                       | 15GB                | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation3_increased-spatial-inputs.yaml)      |
-| +instance aware obj. queries  | 6        | 4      | 4                    | 37.0  | 115                       | 15GB                | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation4_instance-aware.yaml)                |
-| +multi-scale mask head        | 6        | 4      | 4                    | 40.2  | 128                       | 16GB                | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation5_multi-scale_mask-head.yaml)         |
-| +multi-cue clip tracking      | 6        | 4      | 4                    | 41.9  | ---                       | --                  | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation6_TEST_multi-cue_tracking.yaml)       |
-| +aux. loss weighting          | 6        | 4      | 4                    | 43.95 | 128                       | 16GB                | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/YT-19/devis_R_50_YT-19.yaml)                              |
+| Method                       | Clip size | K_temp | Features<br/> scales | AP   | Training<br/> GPU hours\* | Max GPU <br/>memory | URL                                                                                                                        |
+|------------------------------|----------|--------|----------------------|------|---------------------------|---------------------|----------------------------------------------------------------------------------------------------------------------------|
+| Deformable VisTR             | 36       | 4      | 1                    | 34.2 | 190                       | 10GB                | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation0_deformable_vistr.yaml)    |
+| Deformable VisTR             | 36       | 0      | 1                    | 35.3 | 150                       | 7GB                 | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation1_deformable_vistr_wo_temp_conn.yaml) |
+| Deformable VisTR             | 6        | 0      | 1                    | 32.4 | 40                        | 2GB                 | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation2-5_single-scale_wo_temp_conn.yaml)   |
+| DeVIS                        | 6        | 4      | 1                    | 34.0 | 46                        | 3GB                 | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation2_single-scale.yaml)                  |
+| +increase spatial inputs     | 6        | 4      | 4                    | 35.9 | 104                       | 15GB                | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation3_increased-spatial-inputs.yaml)      |
+| +instance aware obj. queries | 6        | 4      | 4                    | 37.0 | 115                       | 15GB                | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation4_instance-aware.yaml)                |
+| +multi-scale mask head       | 6        | 4      | 4                    | 40.2 | 128                       | 16GB                | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation5_multi-scale_mask-head.yaml)         |
+| +multi-cue clip tracking     | 6        | 4      | 4                    | 41.9 | ---                       | --                  | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/ablations/devis_ablation6_TEST_multi-cue_tracking.yaml)       |
+| +aux. loss weighting         | 6        | 4      | 4                    | 44.0 | 128                       | 16GB                | [config](https://github.com/acaelles97/DeVIS/blob/master/configs/devis/YT-19/devis_R_50_YT-19.yaml)                              |
 
 
 *Training GPU hours measured on a RTX A6000 GPU
@@ -55,4 +55,4 @@ We also provide configuration file to run all the ablation studies presented on 
 We support evaluation during training for VIS datasets despite GT annotations not available.
 Results will be saved into `TEST.SAVE_PATH` folder, created inside `OUTPUT_DIR`.
 Users can set `EVAL_PERIOD` to select the interval between validations (0 to disable it) 
-Additionally, `START_EVAL_EPOCH` allows selecting at which epoch start considering `EVAL_PERIOD` in order to omit first epochs.
+Additionally, `START_EVAL_EPOCH` allows selecting at which epoch start considering `EVAL_PERIOD`, useful in order to omit first epochs.
