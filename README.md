@@ -5,7 +5,7 @@ This repository provides the official implementation of the [DeVIS: Making Defor
 <!-- **As the paper is still under submission this repository will continuously be updated and might at times not reflect the current state of the [arXiv paper](https://arxiv.org/abs/2012.01866).** -->
 
 <div align="center">
-    <img src="docs/evis_method.png" width="800"/>
+    <img src="docs/devis_method.png" width="800"/>
 </div>
 
 ## Abstract
@@ -22,41 +22,58 @@ DeVIS benefits from comparatively small memory as well as training time requirem
 Click on the evaulation benchmark you want to see!
 <details><summary>COCO</summary><p>
 
-| Model                                                        | Backbone | box AP | mask AP | AP50 | AP75 | APl  | APm  | Aps  | FPS  |
-|--------------------------------------------------------------|----------|--------|---------|------|------|------|------|------|------|
-| [Mask R-CNN](https://github.com/facebookresearch/detectron2) | R50      | 41.0   | 37.2    | 58.5 | 39.8 | 53.3 | 39.4 | 18.6 | 21.4 |
-| Ours                                                         | R50      | 46.3   | 38.0    | 61.4 | 40.1 | 59.8 | 41.4 | 17.9 | 12.1 |
-| [Mask R-CNN](https://github.com/facebookresearch/detectron2) | R101     | 42.9   | 38.6    | 60.4 | 41.3 | 55.3 | 41.3 | 19.4 | -    |
-| Ours                                                         | R101     | 47.9   | 39.9    | 63.0 | 42.1 | 61.5 | 43.9 | 19.9 | -    |
-| Ours                                                         | SwinL    | 46.3   | 38.0    | 61.4 | 40.1 | 59.8 | 41.4 | 17.9 | -    |
+| Model                                                         | Backbone | box AP | mask AP | AP50 | AP75 | APl | APm  | Aps  | FPS  |
+|---------------------------------------------------------------|----------|--------|---------|------|-----|-----|------|------|------|
+| [Mask R-CNN](https://github.com/facebookresearch/detectron2)  | R50      | 41.0   | 37.2    | 58.5 | 39.8 | 53.3 | 39.4 | 18.6 | 21.4 |
+| [Mask2Former](https://github.com/facebookresearch/detectron2) | R50      | -      | 43.7    | -    | -   | 64.8 | 47.2 | 23.4 | 13.5 |
+| Ours                                                          | R50      | 46.3   | 38.0    | 61.4 | 40.1 | 59.8 | 41.4 | 17.9 | 12.1 |
+| [Mask R-CNN](https://github.com/facebookresearch/detectron2)  | R101     | 42.9   | 38.6    | 60.4 | 41.3 | 55.3 | 41.3 | 19.4 | -    |
+| [Mask2Former](https://github.com/facebookresearch/detectron2) | R101     | -      | 44.2    | -    | -   | 67.7 | 47.7 | 23.8 | -    |
+| Ours                                                          | R101     | 47.9   | 39.9    | 63.0 | 42.1 | 61.5 | 43.9 | 19.9 | -    |
+| [Mask2Former](https://github.com/facebookresearch/detectron2) | R101     | -      | 50.1    | -    | -   | 72.1 | 53.9 | 31.0 | -    |
+| Ours                                                          | SwinL    | 54.6   | 45.2    | 61.4 | 40.1 | 59.8 | 41.4 | 17.9 | -    |
 
 </p></details>
 
 <details><summary>YouTube-VIS-2019</summary><p>
 
-| Model                                             | AP   | AP50 | AP75 | AR1  | AR10 | FPS   |
-|---------------------------------------------------|------|------|------|------|------|-------|
-| [VisTR](https://github.com/Epiphqny/VisTR)        | 36.2 | 59.8 | 36.9 | 37.2 | 42.4 | 69.9  |
-| [IFC](https://github.com/sukjunhwang/IFC)         | 41.2 | 65.1 | 44.6 | 42.3 | 49.6 | 107.1 |
-| [SeqFormer](https://github.com/wjf5203/SeqFormer) | 45.1 | 66.9 | 50.5 | 45.6 | 54.6 | -     |
-| Ours (T=6, S=4)                                   | 44.4 | 67.9 | 48.6 | 42.4 | 51.6 | 18.4  |
+| Model                                                          | Backbone   | AP   | AP50 | AP75 | AR1  | AR10 | FPS   |
+|----------------------------------------------------------------|------------|------|------|------|------|------|-------|
+| [VisTR](https://github.com/Epiphqny/VisTR)                     | R50        | 36.2 | 59.8 | 36.9 | 37.2 | 42.4 | 69.9  |
+| [IFC](https://github.com/sukjunhwang/IFC)                      | R50        | 41.2 | 65.1 | 44.6 | 42.3 | 49.6 | 107.1 |
+| [SeqFormer](https://github.com/wjf5203/SeqFormer)              | R50        | 45.1 | 66.9 | 50.5 | 45.6 | 54.6 | -     |
+| [Mask2Former](https://github.com/facebookresearch/Mask2Former) | R50        | 46.4 | 68.0 | 50.0 | -    | -    | -     |
+| Ours (T=6, S=4)                                                | R50        | 44.4 | 67.9 | 48.6 | 42.4 | 51.6 | 18.4  |
+| [SeqFormer](https://github.com/wjf5203/SeqFormer)              | SwinL      | 59.3 | 82.1 | 66.4 | 51.7 | 64.4 | -     |
+| [Mask2Former](https://github.com/facebookresearch/Mask2Former) | SwinL      | 60.4 | 84.4 | 67.0 | -    | -    | -     |
+| Ours (T=6, S=4)                                                | SwinL      | 57.1 | 80.8 | 66.3 | 50.8 | 61.0 | -     |
+
 </p></details>
 
 <details><summary>YouTube-VIS-2021</summary><p>
 
-| Model                                             | AP   | AP50 | AP75 | AR1  | AR10 |
-|---------------------------------------------------|------|------|------|------|------|
-| [IFC](https://github.com/sukjunhwang/IFC)         | 35.2 | 57.2 | 37.5 | -    | -    |
-| [SeqFormer](https://github.com/wjf5203/SeqFormer) | 40.5 | 62.4 | 43.7 | 36.1 | 48.1 |
-| Ours (T=6, S=4)                                   | 41.9 | 64.8 | 46.0 | 37.3 | 48.5 |
+| Model                                                          | Backbone   | AP   | AP50 | AP75 | AR1  | AR10 |
+|----------------------------------------------------------------|------------|------|------|------|------|------|
+| [IFC](https://github.com/sukjunhwang/IFC)                      | R50        | 35.2 | 57.2 | 37.5 | -    | -    |
+| [SeqFormer](https://github.com/wjf5203/SeqFormer)              | R50        | 40.5 | 62.4 | 43.7 | 36.1 | 48.1 |
+| [Mask2Former](https://github.com/facebookresearch/Mask2Former) | R50        | 40.6 | 60.9 | 41.8 | -    | -    |
+| Ours (T=6, S=4)                                                | R50        | 43.1 | 66.8 | 46.6 | 38.0 | 50.1 |
+| [SeqFormer](https://github.com/wjf5203/SeqFormer)              | SwinL      | 51.8 | 74.6 | 58.2 | 42.8 | 58.1 |
+| [Mask2Former](https://github.com/facebookresearch/Mask2Former) | SwinL      | 52.6 | 76.4 | 57.2 | -    | -    |
+| Ours (T=6, S=4)                                                | SwinL      | 54.4 | 77.7 | 59.8 | 43.8 | 57.8 |
+
 </p></details>
 
 
  <details><summary>OVIS</summary><p>
 
-| Model           | AP   | AP50 | AP75 | AR1  | AR10 |
-|-----------------|------|------|------|------|------|
-| Ours (T=6, S=4) | 23.2 | 44.0 | 21.7 | 11.8 | 27.9 |
+| Model                                          | Backbone | AP   | AP50 | AP75 | AR1  | AR10 |
+|------------------------------------------------|----------|------|------|------|------|------|
+| [CrossVis](https://github.com/hustvl/CrossVIS) | R50      | 14.9 | 32.7 | 12.1 | 10.3 | 19.8 |
+| [TeViT](https://github.com/hustvl/tevit)       | R50      | 17.4 | 34.9 | 15.0 | 11.2 | 21.8 |
+| Ours (T=6, S=4)                                | R50      | 23.7 | 47.6 | 20.8 | 12.0 | 28.9 |
+| Ours (T=6, S=4)                                | SwinL    | 35.5 | 59.3 | 38.3 | 16.6 | 39.8 |
+
 </p></details>
 
 ## Configuration
@@ -77,11 +94,11 @@ We refer to our [docs/TRAIN.md](docs/TRAIN.md) for detailed training instruction
 To evaluate model's performance, you just need to add the `--eval-only` argument and set `MODEL.WEIGHTS` to the checkpoint path via command line.
 For example, the following command shows how to obtain YT-19 val predictions:
 ```
-python main.py --config-file configs/devis/devis_R_50_YT-19.yaml --eval-only MODEL.WEIGHTS /path/to/yt-19_checkpoint_file
+python main.py --config-file configs/devis/YT-19/devis_R_50_YT-19.yaml --eval-only MODEL.WEIGHTS /path/to/yt-19_checkpoint_file
 ```
 We also support multi GPU test, so you only need to set `--nproc_per_node` to the number of GPUs desired.
 ```
-torchrun --nproc_per_node=4 main.py --config-file configs/devis/devis_R_50_YT-19.yaml --eval-only MODEL.WEIGHTS /path/to/yt-19_checkpoint_file
+torchrun --nproc_per_node=4 main.py --config-file configs/devis/YT-19/devis_R_50_YT-19.yaml --eval-only MODEL.WEIGHTS /path/to/yt-19_checkpoint_file
 ```
 
 Furthermore, we have added the option to validate several checkpoints once the training finishes by simply pointing `TEST.INPUT_FOLDER` to the output training directory and `TEST.EPOCHS_TO_EVAL` to the epochs you want to validate.
@@ -118,8 +135,3 @@ python visualize_att_maps.py --config-file configs/devis/devis_R_50_visualizatio
 <div align="center">
     <img src="docs/attention_maps.png" width="800"/>
 </div>
-
-## TODO
-- [ ] ResNet-101 COCO and VIS results
-- [ ] Swin-L COCO and VIS results
-- [ ] COCO joint training on YT-19 dataset results

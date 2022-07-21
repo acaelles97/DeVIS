@@ -296,18 +296,21 @@ def build(image_set, cfg):
                            root / "Youtube_VIS-2019/valid/" / "valid.json"), 40),
         "yt_vis_train_21": ((root / "Youtube_VIS-2021/train/JPEGImages",
                              root / "Youtube_VIS-2021/train/" / 'instances.json'), 40),
+        "yt_vis_train_21_wo_2975_2359": ((root / "Youtube_VIS-2021/train/JPEGImages",
+                                          root / "Youtube_VIS-2021/train/" / 'instances_wo_2975_2359.json'), 40),
         "yt_vis_val_21": ((root / "Youtube_VIS-2021/valid/JPEGImages",
                            root / "Youtube_VIS-2021/valid/" / 'instances.json'), 40),
         "ovis_train": ((root / "OVIS/train/", root / "OVIS/" / "annotations_train.json"), 25),
         "ovis_val": ((root / "OVIS/valid/", root / "OVIS/" / "annotations_valid.json"), 25),
 
+        "yt_vis_val_long": ((root / "Youtube_VIS-long/valid/JPEGImages",
+                           root / "Youtube_VIS-long/valid/" / 'instances.json'), 40),
+
         # For debug purposes
-        "mini_train": (
-        (root / "Youtube_VIS/train/JPEGImages", root / "Youtube_VIS/train/" / 'mini_train.json'),
-        40),
-        "mini_val": (
-        (root / "Youtube_VIS/valid/JPEGImages", root / "Youtube_VIS/valid/" / 'mini_valid.json'),
-        40),
+        "mini_train": ((root / "Youtube_VIS/train/JPEGImages",
+                        root / "Youtube_VIS/train/" / 'mini_train.json'), 40),
+        "mini_val": ((root / "Youtube_VIS/valid/JPEGImages",
+                      root / "Youtube_VIS/valid/" / 'mini_valid.json'), 40),
 
     }
 

@@ -1,6 +1,6 @@
 # This mask head is not train from scratch, thus we change lrs
 MODEL:
-  WEIGHTS: 'weights/r50_deformable_detr_plus_iterative_bbox_refinement-checkpoint.pth'
+  WEIGHTS: 'weights/r101_SYN_deformable_detr_DEFAULT_instance_segm_plus_iterative_bbox_refinement.pth'
   BACKBONE: 'resnet101'
   SHIFT_CLASS_NEURON: False
   MASK_ON: True

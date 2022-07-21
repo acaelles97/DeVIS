@@ -1,6 +1,6 @@
 # This mask head is not train from scratch, thus we change lrs
 MODEL:
-  WEIGHTS: 'weights/r50_deformable_detr_plus_iterative_bbox_refinement-checkpoint.pth'
+  WEIGHTS: 'weights/swinL_SYN_deformable_detr_DEFAULT_instance_segm_plus_iterative_bbox_refinement.pth'
   BACKBONE: 'swin_l_p4w12'
   SHIFT_CLASS_NEURON: False
   MASK_ON: True
@@ -14,7 +14,7 @@ SOLVER:
   LR_BACKBONE: 0.00001
   BACKBONE_NAMES: ['backbone.0',]
   LR_MASK_HEAD_MULT: 1
-  EPOCHS: 20
+  EPOCHS: 15
   STEPS: [10, ]
   BATCH_SIZE: 1
 

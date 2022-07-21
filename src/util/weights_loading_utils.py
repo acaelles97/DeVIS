@@ -58,10 +58,11 @@ def adapt_weights_devis(checkpoint: dict, model_state_dict: dict, lvl_res: int, 
 
         if "def_detr" not in k and ("transformer" in k or "class_embed" in k or "bbox_embed" in k or "input_proj" in k or "query_embed" in k or "backbone" in k):
             checkpoint_state_dict[f"def_detr.{k}"] = v
-            if finetune_temporal_modules and (("transformer.encoder" in k and "self_attn" in k) or ("transformer.decoder" in k and "cross_attn" in k)) \
-                    and 'value_proj' not in k and 'output_proj' not in k:
-                name = "def_detr." + ".".join(k.split(".")[:5]) + ".temporal_" + ".".join(k.split(".")[5:])
-                checkpoint_state_dict[name] = torch.clone(v)
+
+            # if finetune_temporal_modules and (("transformer.encoder" in k and "self_attn" in k) or ("transformer.decoder" in k and "cross_attn" in k)) \
+            #         and 'value_proj' not in k and 'output_proj' not in k:
+            #     name = "def_detr." + ".".join(k.split(".")[:5]) + ".temporal_" + ".".join(k.split(".")[5:])
+            #     checkpoint_state_dict[name] = torch.clone(v)
 
             # Use /32 res when only 1 resolution is used
             if lvl_res == 1 and "input_proj.2" in k:
@@ -70,6 +71,19 @@ def adapt_weights_devis(checkpoint: dict, model_state_dict: dict, lvl_res: int, 
 
         else:
             checkpoint_state_dict[k] = v
+
+        if finetune_temporal_modules and (("transformer.encoder" in k and "self_attn" in k) or
+                                          ("transformer.decoder" in k and "cross_attn" in k)) \
+                and 'value_proj' not in k and 'output_proj' not in k:
+
+            if "def_detr" in k:
+                name = ".".join(k.split(".")[:6]) + ".temporal_" + ".".join(
+                    k.split(".")[6:])
+            else:
+                name = "def_detr." + ".".join(k.split(".")[:5]) + ".temporal_" + ".".join(
+                    k.split(".")[5:])
+
+            checkpoint_state_dict[name] = torch.clone(v)
 
     resume_state_dict = {}
     for k, v in model_state_dict.items():

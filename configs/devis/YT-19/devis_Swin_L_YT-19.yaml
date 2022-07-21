@@ -1,8 +1,9 @@
 MODEL:
-  WEIGHTS: 'weights/r50_deformable_detr_segmentation.pth'
+  WEIGHTS: 'weights/swinL_deformable_detr_segmentation.pth'
+  BACKBONE: 'swin_l_p4w12'
   MASK_ON: True
   BBX_GRADIENT_PROP: True
-  NUM_QUERIES: 300
+  NUM_QUERIES: 60
   LOSS:
     AUX_LOSS_WEIGHTING: True
 
@@ -12,16 +13,12 @@ MODEL:
 
 DATASETS:
   TYPE: 'vis'
-  TRAIN_DATASET: 'yt_vis_train_21'
-  VAL_DATASET: 'yt_vis_val_21'
+  TRAIN_DATASET: 'yt_vis_train_19'
+  VAL_DATASET: 'yt_vis_val_19'
 
 INPUT:
   MIN_SIZE_TEST: 360
   MAX_SIZE_TEST: 640
-
-  DEVIS:
-    MULTI_SCALE_TRAIN: True
-    CREATE_BBX_FROM_MASK: True
 
 SOLVER:
   BASE_LR: 0.0001
@@ -31,8 +28,8 @@ SOLVER:
   STEPS: [4, 8]
 
 TEST:
-  START_EVAL_EPOCH: 3
-  NUM_OUT: 30
+  START_EVAL_EPOCH: 5
+  NUM_OUT: 20
 
 
 
