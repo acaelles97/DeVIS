@@ -1,6 +1,7 @@
 MODEL:
-  WEIGHTS: 'weights/r50_deformable_detr_segmentation.pth'
+  WEIGHTS: 'weights/r50_devis_yt-21.pth'
   MASK_ON: True
+  NUM_QUERIES: 180
 
 DATASETS:
   TYPE: 'vis'

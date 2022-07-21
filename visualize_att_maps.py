@@ -32,7 +32,7 @@ def get_args_parser():
                         type=int,
                         default=None)
 
-    parser.add_argument('--layer-used',
+    parser.add_argument('--layer',
                         help="Allows selecting the layer in which visualizing the attention maps",
                         choices=[0, 1, 2, 3, 4, 5],
                         type=int,
@@ -299,7 +299,7 @@ def run_demo(args, cfg):
         },
         att_maps_cfg={
             "merge_resolution": args.merge_resolution,
-            "layer_used": args.layer_used,
+            "layer": args.layer,
             "used_resolution": args.used_resolution,
         }
     )

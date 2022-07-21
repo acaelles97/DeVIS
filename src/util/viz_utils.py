@@ -249,8 +249,8 @@ def visualize_results_merged(folder_images, images_path, video_results, final_cl
     unique_files = list(set(all_files))
     unique_files.sort()
     video_name = unique_files[0].split("/")[0]
-    # cmap = create_color_map(N=15)[1:]
-    cmap = np.array([[151, 208, 119], [227, 0, 227]])
+    cmap = create_color_map(N=15)[1:]
+    # cmap = np.array([[151, 208, 119], [227, 0, 227]])
 
     out_folder = os.path.join(out_path, video_name)
     os.makedirs(out_folder, exist_ok=True)
@@ -262,7 +262,7 @@ def visualize_results_merged(folder_images, images_path, video_results, final_cl
     out_file = None
 
     show_bbx = False
-    show_cat = False
+    show_cat = True
 
     for t, image_path  in enumerate(unique_files):
         frame_name = image_path.split("/")[1]

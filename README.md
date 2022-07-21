@@ -108,10 +108,10 @@ When `TEST.VIZ.OUT_VIZ_PATH=path/to/save` is specified, the visual results from 
 Additionally, `TEST.VIZ.SAVE_CLIP_VIZ` allows saving results from the sub-clips (without the clip tracking being involved). Finally, `TEST.VIZ.SAVE_MERGED_TRACKS=True` plots all tracks on the same image (same as figures from the paper).
 
 We provide an additional [config file](configs/devis/devis_R_50_visualization_YT-21.yaml) that changes thresholds to get more visual appealing results as well as `TEST.VIZ.VIDEO_NAMES` to infer only the specified videos (the ones shown below). 
-The following command shows how to get visual results from YT-19 val set:
+The following command shows how to get visual results from YT-21 val set:
 
 ```
-python main.py --config-file configs/devis/devis_R_50_visualization_YT-19.yaml --eval-only MODEL.WEIGHTS /path/to/yt-19_checkpoint_file
+python main.py --config-file configs/devis/devis_R_50_visualization_YT-21.yaml --eval-only MODEL.WEIGHTS /path/to/yt-21_checkpoint_file
 ```
 To generate the video, you just need to then enter to the output folder containing all the images and use:
 
@@ -130,7 +130,7 @@ We also provide an additional script `visualize_att_maps.py` to generate attenti
 We recommend using the aforementioned visualization config file.
 The script allows to choose the decoder layer as well as whether to merge resolutions or not (see  *args_parse()* for more info).
 ```
-python visualize_att_maps.py --config-file configs/devis/devis_R_50_visualization_YT-19.yaml  MODEL.WEIGHTS /path/to/yt-19_checkpoint_file
+python visualize_att_maps.py --config-file configs/devis/devis_R_50_visualization_YT-21.yaml --merge-resolution 1 MODEL.WEIGHTS /path/to/yt-21_checkpoint_file
 ```
 <div align="center">
     <img src="docs/attention_maps.png" width="800"/>

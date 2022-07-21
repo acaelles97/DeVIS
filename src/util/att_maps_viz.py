@@ -628,7 +628,7 @@ def visualize_clips_with_att_maps_per_reslvl(idx, folder_images, images_path, tr
         # os.makedirs(out_folder_att_maps, exist_ok=True)
 
         for lvl in range(track.spatial_shapes.shape[0]):
-            if lvl not in res_lvls:
+            if lvl != res_lvls:
                 continue
 
             fig, axs = plt.subplots(ncols=num_frames + 1, nrows=num_frames + 1, figsize=(34, 22))
