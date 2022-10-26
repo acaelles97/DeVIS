@@ -131,3 +131,15 @@ python visualize_att_maps.py --config-file configs/devis/devis_R_50_visualizatio
 <div align="center">
     <img src="docs/attention_maps.png" width="800"/>
 </div>
+
+## Publication
+If you use this software in your research, please cite our publication:
+
+```
+@article{devix,
+  author = {Caelles, Adrià and Meinhardt, Tim and Brasó, Guillem and Leal-Taixé, Laura},
+  title = {DeVIS: Making Deformable Transformers Work for Video Instance Segmentation},
+  journal = {arXiv:2207.11103},
+  year = {2022},
+}
+```
