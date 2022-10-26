@@ -136,7 +136,7 @@ python visualize_att_maps.py --config-file configs/devis/devis_R_50_visualizatio
 If you use this software in your research, please cite our publication:
 
 ```
-@article{devix,
+@article{devis,
   author = {Caelles, Adrià and Meinhardt, Tim and Brasó, Guillem and Leal-Taixé, Laura},
   title = {DeVIS: Making Deformable Transformers Work for Video Instance Segmentation},
   journal = {arXiv:2207.11103},
