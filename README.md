@@ -138,7 +138,7 @@ If you use this software in your research, please cite our publication:
 ```
 @article{devis,
   author = {Caelles, Adrià and Meinhardt, Tim and Brasó, Guillem and Leal-Taixé, Laura},
-  title = {DeVIS: Making Deformable Transformers Work for Video Instance Segmentation},
+  title = {{DeVIS: Making Deformable Transformers Work for Video Instance Segmentation}},
   journal = {arXiv:2207.11103},
   year = {2022},
 }
