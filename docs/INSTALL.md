@@ -64,6 +64,6 @@ We provide pre-trained weights for the Deformable Mask Head training, as well as
 We expect them to be downloaded and unpacked under the [`weights`](../weights) directory
 ```
 cd weights
-wget https://vision.in.tum.de/webshare/u/cad/ablation_pre-trained_weights.zip
+wget https://vision.in.tum.de/webshare/u/meinhard/cad/ablation_pre-trained_weights.zip
 unzip ablation_pre-trained_weights.zip
 ```
